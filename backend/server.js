@@ -10,10 +10,10 @@ app.use(cors());
 app.use(express.json());
 
 // Connect to MongoDB
-mongoose.connect('mongodb://localhost:27017/tuk-mapping', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-});
+// Clean connection for modern Mongoose
+mongoose.connect('mongodb://localhost:27017/tuk-mapping')
+  .then(() => console.log('Connected to MongoDB successfully!'))
+  .catch(err => console.error('Connection error:', err));
 
 // Define a simple Schema to save the results
 const ProfileSchema = new mongoose.Schema({
