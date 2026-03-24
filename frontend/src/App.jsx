@@ -134,22 +134,9 @@ function App() {
       setProfile(response.data);
 
       // NEW: Try to also set analytics from the backend response
-      // Expected shape example:
-      // response.data = {
-      //   bio: "...",
-      //   acquired_skills: [...],
-      //   marketable_services: [...],
-      //   analyticsData: {
-      //     totalStudents: 123,
-      //     averageScore: 78,
-      //     chartData: [{ name: 'A', score: 50 }, ...]
-      //   }
-      // }
       if (response.data?.analyticsData) {
         setAnalyticsData(response.data.analyticsData);
       } else {
-        // If your backend doesn't return it yet, leave it null.
-        // (You can later add a separate endpoint call.)
         setAnalyticsData(null);
       }
     } catch (error) {
@@ -243,11 +230,18 @@ function App() {
           <p style={{ fontSize: '18px', color: '#34495e', fontStyle: 'italic' }}>"{profile.bio}"</p>
 
           <div style={{ display: 'flex', gap: '40px', marginTop: '30px' }}>
-            {/* Skills Column */}
+            {/* Skills Column (Updated for BI Categorization) */}
             <div style={{ flex: 1 }}>
-              <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>Extracted Skills</h3>
+              <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px', color: '#2c3e50' }}>Technical Skills</h3>
+              <ul style={{ paddingLeft: '20px', lineHeight: '1.6', marginBottom: '20px' }}>
+                {profile.technical_skills && profile.technical_skills.map((skill, index) => (
+                  <li key={index}><strong>{skill}</strong></li>
+                ))}
+              </ul>
+
+              <h3 style={{ borderBottom: '2px solid #f39c12', paddingBottom: '10px', color: '#2c3e50' }}>Soft Skills</h3>
               <ul style={{ paddingLeft: '20px', lineHeight: '1.6' }}>
-                {profile.acquired_skills && profile.acquired_skills.map((skill, index) => (
+                {profile.soft_skills && profile.soft_skills.map((skill, index) => (
                   <li key={index}>{skill}</li>
                 ))}
               </ul>
