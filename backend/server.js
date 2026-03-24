@@ -12,12 +12,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 1. Database Connection
+// 1. Updated Database Schema: Requiring userId and userEmail
 mongoose.connect('mongodb://localhost:27017/tuk-mapping')
   .then(() => console.log('✅ Connected to MongoDB successfully!'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
 const ProfileSchema = new mongoose.Schema({
+    userId: { type: String, required: true },      // NEW: Google User ID
+    userEmail: { type: String, required: true },   // NEW: Google Email
     name: String,
     surveyAnswers: Object,
     generatedProfile: Object,
@@ -35,28 +37,30 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             return res.status(400).send('Missing documents or survey data.');
         }
 
-        let surveyData = JSON.parse(req.body.survey);
-        console.log(`Processing ${req.files.length} files for: ${surveyData.name}`);
+        // --- NEW: Security - Extract User Credentials from Request ---
+        const userId = req.body.userId;
+        const userEmail = req.body.userEmail;
 
+        if (!userId || !userEmail) {
+            return res.status(401).send("Unauthorized: Missing user credentials.");
+        }
+
+        let surveyData = JSON.parse(req.body.survey);
         let combinedExtractedText = "";
 
         // 1. OMNI-PARSER PIPELINE: Loop through all uploaded files
         for (const file of req.files) {
             const mimeType = file.mimetype;
-            console.log(`Parsing file: ${file.originalname} (${mimeType})`);
-
             try {
                 if (mimeType === 'application/pdf') {
                     const pdfData = await pdfParse(file.buffer);
                     combinedExtractedText += pdfData.text + " ";
                 } 
                 else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-                    // Extract text from DOCX using mammoth
                     const docxData = await mammoth.extractRawText({ buffer: file.buffer });
                     combinedExtractedText += docxData.value + " ";
                 } 
                 else if (mimeType.startsWith('image/')) {
-                    // Extract text from PNG/JPEG using OCR via Tesseract
                     const ocrData = await Tesseract.recognize(file.buffer, 'eng');
                     combinedExtractedText += ocrData.data.text + " ";
                 }
@@ -65,76 +69,65 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             }
         }
 
-        // 2. CONTEXT MANAGEMENT: Clean and truncate to handle multi-file context
+        // 2. CONTEXT MANAGEMENT: Clean and truncate
         const cleanedText = combinedExtractedText.replace(/\s+/g, ' ').trim().substring(0, 2000); 
 
         const combinedPrompt = `
         You are an intelligent BI career mapping AI. Analyze the student's extracted texts and survey.
-        Strictly output ONLY valid JSON. Do not include markdown.
+        Strictly output ONLY valid JSON.
         
-        Task: Return a JSON object containing: 
-        'bio': Professional summary (1 sentence).
-        'employability_score': A number from 1 to 100.
-        'technical_skills': Array of maximum 4 hard/software skills.
-        'soft_skills': Array of maximum 3 interpersonal skills.
-        'marketable_services': Array of exactly 2 gig-economy services (requires 'service_name', 'description', 'suggested_rate').
+        Task: Return a JSON object containing 'bio', 'employability_score', 'technical_skills', 'soft_skills', and 'marketable_services'.
         
         Survey: ${JSON.stringify(surveyData)}
         Extracted Text: ${cleanedText}
         `;
 
-        console.log('🤖 Sending aggregated data to Llama...');
-
         const response = await axios.post('http://localhost:11434/api/generate', {
             model: 'llama3.2:1b',
             prompt: combinedPrompt,
             stream: false,
-            options: {
-                temperature: 0.1,    
-                num_ctx: 2048,   // Increased context window for multiple files
-                num_predict: 250     
-            }
+            options: { temperature: 0.1, num_ctx: 2048, num_predict: 250 }
         });
 
         // 3. THE JSON AUTO-HEALER
         let rawResponse = response.data.response;
         let profileData;
-        
         try {
             const repairedJson = jsonrepair(rawResponse);
             profileData = JSON.parse(repairedJson);
-            console.log('✅ Llama output parsed and auto-healed successfully.');
         } catch (repairError) {
-            console.error("Critical JSON failure. Llama output was unfixable:", rawResponse);
             throw new Error("AI generated unreadable data.");
         }
 
-        // 4. Save the new profile to Database
+        // 4. NEW: Save securely attached to this specific user
         const newProfile = new Profile({
+            userId: userId,
+            userEmail: userEmail,
             name: surveyData.name,
             surveyAnswers: surveyData,
             generatedProfile: profileData
         });
         await newProfile.save();
+        console.log(`💾 Profile saved securely for user: ${userEmail}`);
 
-        // 5. GLOBAL Analytics Aggregation logic
-        const allProfiles = await Profile.find();
-        const totalStudents = allProfiles.length;
-        const avgScore = allProfiles.reduce((acc, p) => 
-            acc + (p.generatedProfile?.employability_score || 0), 0) / (totalStudents || 1);
+        // 5. NEW: Fetch PERSONAL analytics (Only this user's documents)
+        const userProfiles = await Profile.find({ userId: userId });
+        const totalDocuments = userProfiles.length;
+        
+        const avgScore = userProfiles.reduce((acc, p) => 
+            acc + (p.generatedProfile?.employability_score || 0), 0) / (totalDocuments || 1);
 
-        const chartData = allProfiles.map(p => ({
-            name: p.name ? p.name.split(' ')[0] : 'Unknown', 
+        // Chart shows user's progress over different document uploads
+        const chartData = userProfiles.map((p, index) => ({
+            name: `Doc ${index + 1}`, 
             score: p.generatedProfile?.employability_score || 0
         }));
 
-        // --- UPDATED: Safely Calculate Skill Frequencies ---
+        // Personal Skill Heatmap logic
         const skillCounts = {};
-        allProfiles.forEach(p => {
+        userProfiles.forEach(p => {
             const skills = p.generatedProfile?.technical_skills || [];
-            
             skills.forEach(skill => {
-                // TYPE CHECK: Only process this if the AI actually returned a string
                 if (typeof skill === 'string' && skill.trim() !== '') {
                     const cleanSkill = skill.trim().charAt(0).toUpperCase() + skill.trim().slice(1).toLowerCase();
                     skillCounts[cleanSkill] = (skillCounts[cleanSkill] || 0) + 1;
@@ -147,11 +140,11 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             .sort((a, b) => b.count - a.count)
             .slice(0, 5);
 
-        // 6. Return response to Frontend
+        // 6. Return response with Personal Analytics
         res.json({
             ...profileData, 
             analyticsData: {
-                totalStudents,
+                totalStudents: totalDocuments, // Repurposed as "Total Documents Analyzed"
                 averageScore: avgScore.toFixed(1),
                 chartData,
                 topSkills 
