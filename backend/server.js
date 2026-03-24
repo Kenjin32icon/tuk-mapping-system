@@ -75,16 +75,36 @@ app.post('/api/analyze-data', upload.single('document'), async (req, res) => {
         const profileData = JSON.parse(response.data.response);
         console.log('✅ Llama BI generation complete.');
 
-        // 4. Save & Send
+        // 4. Save the new profile
         const newProfile = new Profile({
             name: surveyData.name,
             surveyAnswers: surveyData,
             generatedProfile: profileData
         });
+
         await newProfile.save();
         console.log('💾 Profile saved to MongoDB.');
 
-        res.json(profileData);
+        // 5. NEW: Fetch GLOBAL analytics to update the dashboard immediately
+        const allProfiles = await Profile.find();
+        const totalStudents = allProfiles.length;
+        const avgScore = allProfiles.reduce((acc, p) => 
+            acc + (p.generatedProfile.employability_score || 0), 0) / totalStudents;
+
+        const chartData = allProfiles.map(p => ({
+            name: p.name ? p.name.split(' ')[0] : 'Unknown', 
+            score: p.generatedProfile.employability_score || 0
+        }));
+
+        // 6. Send everything back to the frontend
+        res.json({
+            ...profileData, // The individual student's bio, skills, etc.
+            analyticsData: {
+                totalStudents,
+                averageScore: avgScore.toFixed(1),
+                chartData
+            }
+        });
 
     } catch (error) {
         console.error('❌ Server Error:', error.message);
@@ -108,7 +128,6 @@ app.get('/api/analytics-overview', async (req, res) => {
             });
         }
 
-        // 1. Calculate average employability score
         const scores = allProfiles
             .map(p => p.generatedProfile?.employability_score)
             .filter(score => typeof score === 'number');
@@ -116,7 +135,6 @@ app.get('/api/analytics-overview', async (req, res) => {
             ? Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length)
             : 0;
 
-        // 2. Tally most common technical skills
         const technicalSkillCount = {};
         allProfiles.forEach(p => {
             const skills = p.generatedProfile?.technical_skills || [];
@@ -130,7 +148,6 @@ app.get('/api/analytics-overview', async (req, res) => {
             .slice(0, 5)
             .map(([skill, count]) => ({ skill, count }));
 
-        // 3. Tally most common soft skills
         const softSkillCount = {};
         allProfiles.forEach(p => {
             const skills = p.generatedProfile?.soft_skills || [];
@@ -144,7 +161,6 @@ app.get('/api/analytics-overview', async (req, res) => {
             .slice(0, 5)
             .map(([skill, count]) => ({ skill, count }));
 
-        // 4. Tally most common marketable services
         const serviceCount = {};
         allProfiles.forEach(p => {
             const services = p.generatedProfile?.marketable_services || [];
@@ -181,13 +197,11 @@ app.get('/api/analytics', async (req, res) => {
     try {
         const profiles = await Profile.find();
 
-        // BI Logic: Calculate Average Employability Score
         const totalScore = profiles.reduce((acc, p) => acc + (p.generatedProfile?.employability_score || 0), 0);
         const avgScore = profiles.length > 0 ? (totalScore / profiles.length).toFixed(2) : 0;
 
-        // BI Logic: Map scores for a Bar Chart
         const chartData = profiles.map(p => ({
-            name: p.name ? p.name.split(' ')[0] : 'Unknown', // First name only for the chart axis
+            name: p.name ? p.name.split(' ')[0] : 'Unknown',
             score: p.generatedProfile?.employability_score || 0
         }));
 
