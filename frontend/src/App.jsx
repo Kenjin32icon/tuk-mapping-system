@@ -73,7 +73,7 @@ function AnalyticsDashboard({ analyticsData }) {
           </ResponsiveContainer>
         </div>
 
-        {/* NEW: Skills Heatmap (Horizontal Bar Chart) */}
+        {/* Skills Heatmap (Horizontal Bar Chart) */}
         <div style={{ flex: 1, height: 300 }}>
           <h3 style={{ fontSize: '16px', color: '#34495e', textAlign: 'center' }}>
             Top Technical Skills Heatmap
@@ -94,12 +94,10 @@ function AnalyticsDashboard({ analyticsData }) {
 }
 
 function App() {
-  // 1. State for the File and AI Output
-  const [file, setFile] = useState(null);
+  // 1. UPDATED: State for Multiple Files
+  const [files, setFiles] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
-
-  // State for global analytics
   const [analyticsData, setAnalyticsData] = useState(null);
 
   // 2. State for the User Survey
@@ -109,7 +107,6 @@ function App() {
     career_goal: ''
   });
 
-  // Handle text input changes
   const handleInputChange = (e) => {
     setSurveyData({
       ...surveyData,
@@ -117,11 +114,11 @@ function App() {
     });
   };
 
+  // UPDATED: Multi-File Selection Handler
   const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
+    setFiles(Array.from(e.target.files));
   };
 
-  // --- PDF EXPORT FUNCTION ---
   const downloadPDF = () => {
     const element = document.getElementById('student-profile-report');
     const opt = {
@@ -134,9 +131,10 @@ function App() {
     html2pdf().set(opt).from(element).save();
   };
 
+  // UPDATED: Multi-File Upload Logic
   const handleUpload = async () => {
-    if (!file) {
-      alert("Please upload a document first.");
+    if (files.length === 0) {
+      alert("Please upload at least one document.");
       return;
     }
     if (!surveyData.name || !surveyData.major) {
@@ -148,13 +146,16 @@ function App() {
     setProfile(null); 
     setAnalyticsData(null); 
 
-    // 3. Package the file and dynamic survey data
     const formData = new FormData();
-    formData.append('document', file);
+    
+    // Append every file to the 'documents' key for the backend array
+    files.forEach((file) => {
+        formData.append('documents', file);
+    });
+    
     formData.append('survey', JSON.stringify(surveyData));
 
     try {
-      // Send to backend
       const response = await axios.post(
         'http://localhost:5000/api/analyze-data',
         formData,
@@ -163,13 +164,10 @@ function App() {
         }
       );
 
-      // Set profile and analytics from the backend response
       setProfile(response.data);
 
       if (response.data?.analyticsData) {
         setAnalyticsData(response.data.analyticsData);
-      } else {
-        setAnalyticsData(null);
       }
     } catch (error) {
       console.error("Error generating profile", error);
@@ -184,11 +182,10 @@ function App() {
       <div style={{ textAlign: 'center', marginBottom: '40px' }}>
         <h1 style={{ color: '#2c3e50' }}>TU-K Intelligent Mapping System</h1>
         <p style={{ color: '#7f8c8d' }}>
-          Upload your project report or coursework abstract to discover your marketable services.
+          Upload your documents (PDF, Word, or Images) to discover your marketable services.
         </p>
       </div>
 
-      {/* --- SURVEY FORM --- */}
       <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #dee2e6' }}>
         <h3>Step 1: Student Details</h3>
         <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
@@ -220,7 +217,6 @@ function App() {
         />
       </div>
 
-      {/* --- FILE UPLOAD --- */}
       <div
         style={{
           background: '#f8f9fa',
@@ -233,8 +229,17 @@ function App() {
         }}
       >
         <div>
-          <h3 style={{ margin: '0 0 10px 0' }}>Step 2: Academic Document</h3>
-          <input type="file" accept=".pdf,.txt" onChange={handleFileChange} />
+          <h3 style={{ margin: '0 0 10px 0' }}>Step 2: Academic Documents</h3>
+          {/* UPDATED: Multiple selection input */}
+          <input 
+            type="file" 
+            multiple 
+            accept=".pdf,.txt,.docx,.png,.jpg,.jpeg" 
+            onChange={handleFileChange} 
+          />
+          <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#7f8c8d' }}>
+            {files.length > 0 ? `${files.length} file(s) selected` : "Supported: PDF, DOCX, PNG, JPG, TXT"}
+          </p>
         </div>
 
         <button
@@ -251,11 +256,10 @@ function App() {
             fontWeight: 'bold'
           }}
         >
-          {loading ? '🤖 Analyzing with Llama...' : 'Generate Profile Dashboard'}
+          {loading ? '🤖 Analyzing Portfolio...' : 'Generate Profile Dashboard'}
         </button>
       </div>
 
-      {/* --- RESULTS DASHBOARD --- */}
       {profile && (
         <>
           <div id="student-profile-report" style={{ marginTop: '40px', padding: '30px', border: '1px solid #e1e8ed', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', background: '#fff' }}>
@@ -263,7 +267,6 @@ function App() {
             <p style={{ fontSize: '18px', color: '#34495e', fontStyle: 'italic' }}>"{profile.bio}"</p>
 
             <div style={{ display: 'flex', gap: '40px', marginTop: '30px' }}>
-              {/* Skills Column */}
               <div style={{ flex: 1 }}>
                 <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px', color: '#2c3e50' }}>Technical Skills</h3>
                 <ul style={{ paddingLeft: '20px', lineHeight: '1.6', marginBottom: '20px' }}>
@@ -280,7 +283,6 @@ function App() {
                 </ul>
               </div>
 
-              {/* Services Column */}
               <div style={{ flex: 2 }}>
                 <h3 style={{ borderBottom: '2px solid #2ecc71', paddingBottom: '10px' }}>Marketable Services</h3>
 
@@ -306,11 +308,9 @@ function App() {
               </div>
             </div>
 
-            {/* Analytics dashboard under individual profile */}
             <AnalyticsDashboard analyticsData={analyticsData} />
           </div>
 
-          {/* Download PDF Button */}
           <div style={{ textAlign: 'center', marginTop: '30px' }}>
             <button
               onClick={downloadPDF}

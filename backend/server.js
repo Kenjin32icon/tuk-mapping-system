@@ -28,7 +28,6 @@ const Profile = mongoose.model('Profile', ProfileSchema);
 const upload = multer({ storage: multer.memoryStorage() });
 
 // ─── Route: Upgraded Omni-Parser Pipeline (Multi-File BI) ───────────────────
-// Updated to handle up to 5 files simultaneously
 app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => {
     console.log('--- New Multi-File BI Request Received ---');
     try {
@@ -102,7 +101,6 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
         let profileData;
         
         try {
-            // Fixes missing commas/brackets automatically before parsing
             const repairedJson = jsonrepair(rawResponse);
             profileData = JSON.parse(repairedJson);
             console.log('✅ Llama output parsed and auto-healed successfully.');
@@ -130,12 +128,17 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             score: p.generatedProfile?.employability_score || 0
         }));
 
+        // --- UPDATED: Safely Calculate Skill Frequencies ---
         const skillCounts = {};
         allProfiles.forEach(p => {
             const skills = p.generatedProfile?.technical_skills || [];
+            
             skills.forEach(skill => {
-                const cleanSkill = skill.trim().charAt(0).toUpperCase() + skill.trim().slice(1).toLowerCase();
-                skillCounts[cleanSkill] = (skillCounts[cleanSkill] || 0) + 1;
+                // TYPE CHECK: Only process this if the AI actually returned a string
+                if (typeof skill === 'string' && skill.trim() !== '') {
+                    const cleanSkill = skill.trim().charAt(0).toUpperCase() + skill.trim().slice(1).toLowerCase();
+                    skillCounts[cleanSkill] = (skillCounts[cleanSkill] || 0) + 1;
+                }
             });
         });
         
