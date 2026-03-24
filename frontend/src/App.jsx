@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import html2pdf from 'html2pdf.js';
 
 // Recharts imports for AnalyticsDashboard
 import {
@@ -18,8 +19,7 @@ function AnalyticsDashboard({ analyticsData }) {
   const COLORS = ['#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6'];
 
   if (!analyticsData) return null;
-
-  const { totalStudents, averageScore, chartData } = analyticsData;
+  const { totalStudents, averageScore, chartData, topSkills } = analyticsData;
 
   return (
     <div
@@ -37,14 +37,14 @@ function AnalyticsDashboard({ analyticsData }) {
 
       {/* KPI Cards */}
       <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '40px' }}>
-        <div className="kpi-card">
+        <div className="kpi-card" style={{ textAlign: 'center' }}>
           <h4 style={{ color: '#7f8c8d', margin: 0 }}>Total Profiles</h4>
           <p style={{ fontSize: '32px', fontWeight: 'bold', margin: '5px 0' }}>
             {totalStudents ?? 0}
           </p>
         </div>
 
-        <div className="kpi-card">
+        <div className="kpi-card" style={{ textAlign: 'center' }}>
           <h4 style={{ color: '#7f8c8d', margin: 0 }}>Avg. Employability</h4>
           <p style={{ fontSize: '32px', fontWeight: 'bold', margin: '5px 0', color: '#2ecc71' }}>
             {averageScore ?? 0}%
@@ -52,22 +52,42 @@ function AnalyticsDashboard({ analyticsData }) {
         </div>
       </div>
 
-      {/* Employability Bar Chart */}
-      <div style={{ width: '100%', height: 300 }}>
-        <h3 style={{ fontSize: '16px', color: '#34495e' }}>Employability Score Distribution</h3>
-        <ResponsiveContainer>
-          <BarChart data={chartData ?? []}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="name" />
-            <YAxis domain={[0, 100]} />
-            <Tooltip cursor={{ fill: '#f8f9fa' }} />
-            <Bar dataKey="score" radius={[5, 5, 0, 0]}>
-              {(chartData ?? []).map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <div style={{ display: 'flex', gap: '20px' }}>
+        {/* Employability Bar Chart */}
+        <div style={{ flex: 1, height: 300 }}>
+          <h3 style={{ fontSize: '16px', color: '#34495e', textAlign: 'center' }}>
+            Employability Scores
+          </h3>
+          <ResponsiveContainer>
+            <BarChart data={chartData ?? []}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" />
+              <YAxis domain={[0, 100]} />
+              <Tooltip cursor={{ fill: '#f8f9fa' }} />
+              <Bar dataKey="score" radius={[5, 5, 0, 0]}>
+                {(chartData ?? []).map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* NEW: Skills Heatmap (Horizontal Bar Chart) */}
+        <div style={{ flex: 1, height: 300 }}>
+          <h3 style={{ fontSize: '16px', color: '#34495e', textAlign: 'center' }}>
+            Top Technical Skills Heatmap
+          </h3>
+          <ResponsiveContainer>
+            <BarChart data={topSkills ?? []} layout="vertical" margin={{ left: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+              <XAxis type="number" />
+              <YAxis dataKey="name" type="category" width={80} />
+              <Tooltip cursor={{ fill: '#f8f9fa' }} />
+              <Bar dataKey="count" fill="#e74c3c" radius={[0, 5, 5, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );
@@ -79,7 +99,7 @@ function App() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // NEW: State for global analytics
+  // State for global analytics
   const [analyticsData, setAnalyticsData] = useState(null);
 
   // 2. State for the User Survey
@@ -112,8 +132,8 @@ function App() {
     }
 
     setLoading(true);
-    setProfile(null); // Clear previous results
-    setAnalyticsData(null); // Clear previous results (optional)
+    setProfile(null); 
+    setAnalyticsData(null); 
 
     // 3. Package the file and dynamic survey data
     const formData = new FormData();
@@ -121,7 +141,7 @@ function App() {
     formData.append('survey', JSON.stringify(surveyData));
 
     try {
-      // Send to your backend
+      // Send to backend
       const response = await axios.post(
         'http://localhost:5000/api/analyze-data',
         formData,
@@ -130,10 +150,9 @@ function App() {
         }
       );
 
-      // Your existing profile
+      // Set profile and analytics from the backend response
       setProfile(response.data);
 
-      // NEW: Try to also set analytics from the backend response
       if (response.data?.analyticsData) {
         setAnalyticsData(response.data.analyticsData);
       } else {
@@ -171,7 +190,7 @@ function App() {
           <input
             type="text"
             name="major"
-            placeholder="Academic Major (e.g., Information Science)"
+            placeholder="Academic Major"
             value={surveyData.major}
             onChange={handleInputChange}
             style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }}
@@ -230,7 +249,7 @@ function App() {
           <p style={{ fontSize: '18px', color: '#34495e', fontStyle: 'italic' }}>"{profile.bio}"</p>
 
           <div style={{ display: 'flex', gap: '40px', marginTop: '30px' }}>
-            {/* Skills Column (Updated for BI Categorization) */}
+            {/* Skills Column */}
             <div style={{ flex: 1 }}>
               <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px', color: '#2c3e50' }}>Technical Skills</h3>
               <ul style={{ paddingLeft: '20px', lineHeight: '1.6', marginBottom: '20px' }}>
@@ -273,7 +292,7 @@ function App() {
             </div>
           </div>
 
-          {/* NEW: Analytics dashboard under profile */}
+          {/* Analytics dashboard under individual profile */}
           <AnalyticsDashboard analyticsData={analyticsData} />
         </div>
       )}
