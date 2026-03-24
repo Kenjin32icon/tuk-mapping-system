@@ -121,6 +121,19 @@ function App() {
     setFile(e.target.files[0]);
   };
 
+  // --- PDF EXPORT FUNCTION ---
+  const downloadPDF = () => {
+    const element = document.getElementById('student-profile-report');
+    const opt = {
+      margin: 10,
+      filename: `${surveyData.name}_Career_Mapping.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(element).save();
+  };
+
   const handleUpload = async () => {
     if (!file) {
       alert("Please upload a document first.");
@@ -244,57 +257,79 @@ function App() {
 
       {/* --- RESULTS DASHBOARD --- */}
       {profile && (
-        <div style={{ marginTop: '40px', padding: '30px', border: '1px solid #e1e8ed', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <h2 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>{surveyData.name}'s Profile</h2>
-          <p style={{ fontSize: '18px', color: '#34495e', fontStyle: 'italic' }}>"{profile.bio}"</p>
+        <>
+          <div id="student-profile-report" style={{ marginTop: '40px', padding: '30px', border: '1px solid #e1e8ed', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', background: '#fff' }}>
+            <h2 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>{surveyData.name}'s Profile</h2>
+            <p style={{ fontSize: '18px', color: '#34495e', fontStyle: 'italic' }}>"{profile.bio}"</p>
 
-          <div style={{ display: 'flex', gap: '40px', marginTop: '30px' }}>
-            {/* Skills Column */}
-            <div style={{ flex: 1 }}>
-              <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px', color: '#2c3e50' }}>Technical Skills</h3>
-              <ul style={{ paddingLeft: '20px', lineHeight: '1.6', marginBottom: '20px' }}>
-                {profile.technical_skills && profile.technical_skills.map((skill, index) => (
-                  <li key={index}><strong>{skill}</strong></li>
-                ))}
-              </ul>
+            <div style={{ display: 'flex', gap: '40px', marginTop: '30px' }}>
+              {/* Skills Column */}
+              <div style={{ flex: 1 }}>
+                <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px', color: '#2c3e50' }}>Technical Skills</h3>
+                <ul style={{ paddingLeft: '20px', lineHeight: '1.6', marginBottom: '20px' }}>
+                  {profile.technical_skills && profile.technical_skills.map((skill, index) => (
+                    <li key={index}><strong>{skill}</strong></li>
+                  ))}
+                </ul>
 
-              <h3 style={{ borderBottom: '2px solid #f39c12', paddingBottom: '10px', color: '#2c3e50' }}>Soft Skills</h3>
-              <ul style={{ paddingLeft: '20px', lineHeight: '1.6' }}>
-                {profile.soft_skills && profile.soft_skills.map((skill, index) => (
-                  <li key={index}>{skill}</li>
-                ))}
-              </ul>
-            </div>
+                <h3 style={{ borderBottom: '2px solid #f39c12', paddingBottom: '10px', color: '#2c3e50' }}>Soft Skills</h3>
+                <ul style={{ paddingLeft: '20px', lineHeight: '1.6' }}>
+                  {profile.soft_skills && profile.soft_skills.map((skill, index) => (
+                    <li key={index}>{skill}</li>
+                  ))}
+                </ul>
+              </div>
 
-            {/* Services Column */}
-            <div style={{ flex: 2 }}>
-              <h3 style={{ borderBottom: '2px solid #2ecc71', paddingBottom: '10px' }}>Marketable Services</h3>
+              {/* Services Column */}
+              <div style={{ flex: 2 }}>
+                <h3 style={{ borderBottom: '2px solid #2ecc71', paddingBottom: '10px' }}>Marketable Services</h3>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '15px' }}>
-                {profile.marketable_services && profile.marketable_services.map((service, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      padding: '20px',
-                      background: '#fff',
-                      borderRadius: '8px',
-                      borderLeft: '5px solid #2ecc71',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                    }}
-                  >
-                    <h4 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>{service.service_name}</h4>
-                    <p style={{ margin: 0, fontSize: '14px', color: '#7f8c8d', lineHeight: '1.5' }}>
-                      {service.description}
-                    </p>
-                  </div>
-                ))}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '15px' }}>
+                  {profile.marketable_services && profile.marketable_services.map((service, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '20px',
+                        background: '#fff',
+                        borderRadius: '8px',
+                        borderLeft: '5px solid #2ecc71',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                      }}
+                    >
+                      <h4 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>{service.service_name}</h4>
+                      <p style={{ margin: 0, fontSize: '14px', color: '#7f8c8d', lineHeight: '1.5' }}>
+                        {service.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
+
+            {/* Analytics dashboard under individual profile */}
+            <AnalyticsDashboard analyticsData={analyticsData} />
           </div>
 
-          {/* Analytics dashboard under individual profile */}
-          <AnalyticsDashboard analyticsData={analyticsData} />
-        </div>
+          {/* Download PDF Button */}
+          <div style={{ textAlign: 'center', marginTop: '30px' }}>
+            <button
+              onClick={downloadPDF}
+              style={{
+                padding: '15px 30px',
+                backgroundColor: '#27ae60',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                boxShadow: '0 4px 10px rgba(39, 174, 96, 0.3)'
+              }}
+            >
+              📥 Download Profile as PDF
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

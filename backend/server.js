@@ -72,8 +72,25 @@ app.post('/api/analyze-data', upload.single('document'), async (req, res) => {
             }
         });
 
-        const profileData = JSON.parse(response.data.response);
-        console.log('✅ Llama BI generation complete.');
+// --- NEW: Robust JSON Sanitizer ---
+        let rawResponse = response.data.response;
+        
+        // 1. Strip markdown code blocks if Llama added them (e.g., ```json ... ```)
+        rawResponse = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+        
+        // 2. Find the first '{' and the last '}' to extract only the JSON object
+        const startIndex = rawResponse.indexOf('{');
+        const endIndex = rawResponse.lastIndexOf('}');
+        
+        if (startIndex === -1 || endIndex === -1) {
+            throw new Error("Llama did not return a valid JSON object.");
+        }
+        
+        const cleanJsonString = rawResponse.substring(startIndex, endIndex + 1);
+        
+        // 3. Parse the cleaned string
+        const profileData = JSON.parse(cleanJsonString);
+        console.log('✅ Llama BI generation complete & parsed successfully.');
 
         // 4. Save the new profile
         const newProfile = new Profile({
