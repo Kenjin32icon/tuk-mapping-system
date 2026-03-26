@@ -12,14 +12,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 1. Updated Database Schema: Requiring userId and userEmail
+// 1. Database Connection and Schema
 mongoose.connect('mongodb://localhost:27017/tuk-mapping')
   .then(() => console.log('✅ Connected to MongoDB successfully!'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
 const ProfileSchema = new mongoose.Schema({
-    userId: { type: String, required: true },      // Google User ID
-    userEmail: { type: String, required: true },   // Google Email
+    userId: { type: String, required: true },      
+    userEmail: { type: String, required: true },   
     name: String,
     surveyAnswers: Object,
     generatedProfile: Object,
@@ -37,7 +37,6 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             return res.status(400).send('Missing documents or survey data.');
         }
 
-        // Security - Extract User Credentials from Request
         const userId = req.body.userId;
         const userEmail = req.body.userEmail;
 
@@ -69,7 +68,6 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             }
         }
 
-        // 2. CONTEXT MANAGEMENT: Clean and truncate
         const cleanedText = combinedExtractedText.replace(/\s+/g, ' ').trim().substring(0, 2000); 
 
         const combinedPrompt = `
@@ -89,7 +87,6 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             options: { temperature: 0.1, num_ctx: 2048, num_predict: 250 }
         });
 
-        // 3. THE JSON AUTO-HEALER
         let rawResponse = response.data.response;
         let profileData;
         try {
@@ -110,41 +107,41 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
         await newProfile.save();
         console.log(`💾 Profile saved securely for user: ${userEmail}`);
 
-        // 5. Fetch PERSONAL analytics (Only this user's documents)
-        const userProfiles = await Profile.find({ userId: userId });
-        const totalDocuments = userProfiles.length;
+        // 5. Build Global Analytics & Trends (BI Component)
+        const allProfiles = await Profile.find();
+        const totalDocuments = allProfiles.length;
+        const totalScore = allProfiles.reduce((acc, p) => acc + (p.generatedProfile?.employability_score || 0), 0);
+        const avgScore = totalDocuments > 0 ? (totalScore / totalDocuments) : 0;
         
-        const avgScore = userProfiles.reduce((acc, p) => 
-            acc + (p.generatedProfile?.employability_score || 0), 0) / (totalDocuments || 1);
-
-        // Chart shows user's progress over different document uploads
-        const chartData = userProfiles.map((p, index) => ({
-            name: `Doc ${index + 1}`, 
+        const chartData = allProfiles.map(p => ({
+            name: p.name ? p.name.split(' ')[0] : 'Unknown',
             score: p.generatedProfile?.employability_score || 0
         }));
 
-        // Personal Skill Heatmap logic
-        const skillCounts = {};
-        userProfiles.forEach(p => {
-            const skills = p.generatedProfile?.technical_skills || [];
-            skills.forEach(skill => {
-                if (typeof skill === 'string' && skill.trim() !== '') {
-                    const cleanSkill = skill.trim().charAt(0).toUpperCase() + skill.trim().slice(1).toLowerCase();
+        // 🛠️ THE FIX: Safely count skills globally across all profiles
+        let skillCounts = {};
+        allProfiles.forEach(p => {
+            // Note: Ensuring we check both 'acquired_skills' and 'technical_skills' based on schema evolution
+            let skills = p.generatedProfile?.acquired_skills || p.generatedProfile?.technical_skills;
+            
+            if (skills && Array.isArray(skills)) {
+                skills.forEach(skill => {
+                    let cleanSkill = skill.trim(); 
                     skillCounts[cleanSkill] = (skillCounts[cleanSkill] || 0) + 1;
-                }
-            });
+                });
+            }
         });
-        
+
         const topSkills = Object.keys(skillCounts)
             .map(skill => ({ name: skill, count: skillCounts[skill] }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 5);
 
-        // 6. Return response with Personal Analytics
+        // 6. Return response to Frontend including global analytics
         res.json({
-            ...profileData, 
+            ...profileData,
             analyticsData: {
-                totalStudents: totalDocuments, // Repurposed as "Total Documents Analyzed"
+                totalStudents: totalDocuments,
                 averageScore: avgScore.toFixed(1),
                 chartData,
                 topSkills 
@@ -161,9 +158,7 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
 app.get('/api/user-history/:userId', async (req, res) => {
     console.log(`--- Fetching history for user: ${req.params.userId} ---`);
     try {
-        // Fetch all profiles generated by this specific user, sorted by newest first
         const userHistory = await Profile.find({ userId: req.params.userId }).sort({ createdAt: -1 });
-        
         res.json({
             count: userHistory.length,
             history: userHistory
