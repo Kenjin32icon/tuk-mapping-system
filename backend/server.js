@@ -103,11 +103,16 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
         // --- STEP C: SEND TO LOCAL AI (OLLAMA) ---
         console.log('🤖 Sending data to Llama 3.2...');
         const response = await axios.post('http://localhost:11434/api/generate', {
-            model: 'llama3.2:1b',
-            prompt: combinedPrompt,
-            stream: false,
-            options: { temperature: 0.1, num_ctx: 2048, num_predict: 250 }
-        });
+    model: 'llama3.2:1b',
+    prompt: combinedPrompt,
+    stream: false,
+    options: { 
+        temperature: 0.7,   // ⬆️ FIX: Raised from 0.1 to 0.7 for higher creativity
+        top_p: 0.9,         // ✨ PRO-TIP: Adds 'nucleus sampling' to increase vocabulary diversity
+        num_ctx: 2048, 
+        num_predict: 500    // ⬆️ Raised from 250 so the AI has enough room to write longer, creative responses
+    }
+});
 
         // --- STEP D: AUTO-HEAL THE JSON ---
         let rawResponse = response.data.response;
