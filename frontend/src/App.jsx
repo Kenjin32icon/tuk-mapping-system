@@ -170,7 +170,7 @@ function App() {
     files.forEach((file) => formData.append('documents', file));
     formData.append('survey', JSON.stringify(surveyData));
     
-    // NEW: Attach Auth credentials to payload
+    // Attach Auth credentials to payload
     formData.append('userId', user.uid);
     formData.append('userEmail', user.email);
 
@@ -276,7 +276,9 @@ function App() {
               </div>
             </div>
 
-            <AnalyticsDashboard analyticsData={analyticsData} />
+            {/* Analytics dashboard under individual profile */}
+            {/* NEW: Ensure it pulls safely from the profile state */}
+            <AnalyticsDashboard analyticsData={profile?.analyticsData} />
           </div>
 
           <div style={{ textAlign: 'center', marginTop: '30px' }}>
