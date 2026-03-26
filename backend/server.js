@@ -18,12 +18,10 @@ app.use(express.json()); // Allows server to read JSON bodies
 // ============================================================================
 // 2. DATABASE CONNECTION & SCHEMA DEFINITION
 // ============================================================================
-// Connect to MongoDB (Make sure your local MongoDB instance is running!)
 mongoose.connect('mongodb://localhost:27017/tuk-mapping')
   .then(() => console.log('✅ Connected to MongoDB successfully!'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// The Blueprint for how a Student Profile is securely saved
 const ProfileSchema = new mongoose.Schema({
     userId: { type: String, required: true },      // Google User ID (Security)
     userEmail: { type: String, required: true },   // Google Email (Security)
@@ -34,18 +32,15 @@ const ProfileSchema = new mongoose.Schema({
 });
 const Profile = mongoose.model('Profile', ProfileSchema);
 
-// Configure Multer to store uploaded files in RAM instead of the hard drive for speed
 const upload = multer({ storage: multer.memoryStorage() });
 
 
 // ============================================================================
 // 3. MAIN AI PIPELINE: PARSE, ANALYZE, AND SAVE
 // ============================================================================
-// This route accepts up to 5 documents at once using the "documents" key
 app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => {
     console.log('--- New Multi-File BI Request Received ---');
     try {
-        // Validation: Ensure files, survey, and Google Auth credentials exist
         if (!req.files || req.files.length === 0 || !req.body.survey) {
             return res.status(400).send('Missing documents or survey data.');
         }
@@ -55,12 +50,9 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
         if (!userId || !userEmail) throw new Error("Unauthorized: Missing user credentials.");
 
         let surveyData = JSON.parse(req.body.survey);
-        console.log(`Processing ${req.files.length} files for: ${userEmail}`);
-
+        
         // --- STEP A: THE OMNI-PARSER ---
         let combinedExtractedText = "";
-        
-        // Loop through every file the user uploaded
         for (const file of req.files) {
             const mimeType = file.mimetype;
             try {
@@ -81,8 +73,6 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             }
         }
 
-        // --- STEP B: CONTEXT MANAGEMENT ---
-        // Clean up weird spaces and heavily truncate the text so Llama's memory doesn't overflow
         const cleanedText = combinedExtractedText.replace(/\s+/g, ' ').trim().substring(0, 2000); 
 
         const combinedPrompt = `
@@ -100,33 +90,28 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
         Extracted Text: ${cleanedText}
         `;
 
-        // --- STEP C: SEND TO LOCAL AI (OLLAMA) ---
         console.log('🤖 Sending data to Llama 3.2...');
         const response = await axios.post('http://localhost:11434/api/generate', {
-    model: 'llama3.2:1b',
-    prompt: combinedPrompt,
-    stream: false,
-    options: { 
-        temperature: 0.7,   // ⬆️ FIX: Raised from 0.1 to 0.7 for higher creativity
-        top_p: 0.9,         // ✨ PRO-TIP: Adds 'nucleus sampling' to increase vocabulary diversity
-        num_ctx: 2048, 
-        num_predict: 500    // ⬆️ Raised from 250 so the AI has enough room to write longer, creative responses
-    }
-});
+            model: 'llama3.2:1b',
+            prompt: combinedPrompt,
+            stream: false,
+            options: { 
+                temperature: 0.7,   
+                top_p: 0.9,         
+                num_ctx: 2048, 
+                num_predict: 500    
+            }
+        });
 
-        // --- STEP D: AUTO-HEAL THE JSON ---
         let rawResponse = response.data.response;
         let profileData;
-        
         try {
-            // jsonrepair automatically adds missing commas, quotes, or brackets hallucinated by Llama
             const repairedJson = jsonrepair(rawResponse);
             profileData = JSON.parse(repairedJson);
         } catch (repairError) {
             throw new Error("Critical JSON failure. Llama output was unfixable.");
         }
 
-        // --- STEP E: SECURE DATABASE SAVE ---
         const newProfile = new Profile({
             userId: userId,
             userEmail: userEmail,
@@ -135,32 +120,22 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             generatedProfile: profileData
         });
         await newProfile.save();
-        console.log(`💾 Profile saved securely for user: ${userEmail}`);
 
-        // --- STEP F: GENERATE PERSONAL ANALYTICS ---
-        // Fetch only documents belonging to this specific Google user
         const userProfiles = await Profile.find({ userId: userId });
         const totalDocuments = userProfiles.length;
-        
-        // Calculate the average employability score across all their past uploads
         const totalScore = userProfiles.reduce((acc, p) => acc + (p.generatedProfile?.employability_score || 0), 0);
         const avgScore = totalDocuments > 0 ? (totalScore / totalDocuments) : 0;
 
-        // Map data for the frontend Progress Chart
         const chartData = userProfiles.map((p, index) => ({
             name: `Doc ${index + 1}`,
             score: p.generatedProfile?.employability_score || 0
         }));
 
-        // 🛠️ THE ERROR FIX: Safe Heatmap Calculation
         const skillCounts = {};
         userProfiles.forEach(p => {
             const skills = p.generatedProfile?.acquired_skills;
-            
-            // Check 1: Does the array exist?
             if (skills && Array.isArray(skills)) {
                 skills.forEach(skill => {
-                    // Check 2: Is the skill actually a String? (Prevents the crash!)
                     if (typeof skill === 'string' && skill.trim() !== '') {
                         const cleanSkill = skill.trim().charAt(0).toUpperCase() + skill.trim().slice(1).toLowerCase();
                         skillCounts[cleanSkill] = (skillCounts[cleanSkill] || 0) + 1;
@@ -169,17 +144,15 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             }
         });
         
-        // Sort the most frequently occurring skills
         const topSkills = Object.keys(skillCounts)
             .map(skill => ({ name: skill, count: skillCounts[skill] }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 5);
 
-        // --- STEP G: RETURN TO FRONTEND ---
         res.json({
             ...profileData, 
             analyticsData: {
-                totalStudents: totalDocuments, // Note: Frontend displays this as "Documents Analyzed"
+                totalStudents: totalDocuments, 
                 averageScore: avgScore.toFixed(1),
                 chartData,
                 topSkills 
@@ -193,13 +166,66 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
 });
 
 
+// ─── Route: Synthesize Master Profile from All Documents ───────────────────
+app.post('/api/synthesize-profile', async (req, res) => {
+    try {
+        const { userId, userEmail } = req.body;
+        if (!userId) return res.status(400).send("User ID required");
+
+        console.log(`--- Synthesizing Master Profile for: ${userEmail} ---`);
+
+        // 1. Fetch all past analyses for this user
+        const userHistory = await Profile.find({ userId: userId });
+        if (userHistory.length === 0) {
+            return res.status(400).send("No documents found to analyze.");
+        }
+
+        // 2. Extract just the AI data to save context window space
+        const pastProfiles = userHistory.map(doc => doc.generatedProfile);
+
+        // 3. The Master Prompt
+        const synthesisPrompt = `
+        You are an expert Career Mapping AI. Review the following separate document analyses for a single student.
+        Synthesize them into ONE comprehensive master profile.
+        Strictly output ONLY valid JSON.
+        
+        Task: Return a JSON object containing:
+        'professional_title': A 2-4 word job title (e.g., 'Data Analyst & Researcher').
+        'bio': A strong 2-sentence professional summary combining all their experiences.
+        'skills': An object with two arrays: 'technical' (max 6) and 'soft' (max 4).
+        'services': Array of exactly 3 marketable services they can offer based on their combined skills. 
+                    Each service must have 'service_name', 'description', and a 'match_percentage' (a number from 1 to 100).
+
+        Past Analyses Data: ${JSON.stringify(pastProfiles)}
+        `;
+
+        // 4. Send to Llama
+        const response = await axios.post('http://localhost:11434/api/generate', {
+            model: 'llama3.2:1b',
+            prompt: synthesisPrompt,
+            stream: false,
+            options: { temperature: 0.6, num_ctx: 2048, num_predict: 500 }
+        });
+
+        // 5. Auto-Heal & Parse
+        const repairedJson = jsonrepair(response.data.response);
+        const masterProfile = JSON.parse(repairedJson);
+
+        res.json(masterProfile);
+
+    } catch (error) {
+        console.error('❌ Synthesis Error:', error.message);
+        res.status(500).send('Error synthesizing profile.');
+    }
+});
+
+
 // ============================================================================
 // 4. ROUTE: FETCH USER HISTORICAL DATA (FOR THE "MY DOCUMENTS" TAB)
 // ============================================================================
 app.get('/api/user-history/:userId', async (req, res) => {
     console.log(`--- Fetching history for user: ${req.params.userId} ---`);
     try {
-        // Find all profiles for this user, sorted by newest first (-1)
         const userHistory = await Profile.find({ userId: req.params.userId }).sort({ createdAt: -1 });
         res.json({
             count: userHistory.length,

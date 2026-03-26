@@ -7,7 +7,7 @@ import { auth, googleProvider } from './firebase'; // Ensure you have firebase.j
 // Recharts imports
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis // <-- NEW IMPORTS
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis // <-- UPDATED IMPORTS
 } from 'recharts';
 
 // --- NEW COMPONENTS FOR NAVIGATION ---
@@ -87,7 +87,7 @@ function SettingsView({ user }) {
   );
 }
 
-// --- EXISTING ANALYTICS DASHBOARD ---
+// --- ANALYTICS DASHBOARD COMPONENT ---
 function AnalyticsDashboard({ analyticsData }) {
   const COLORS = ['#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6'];
   if (!analyticsData) return null;
@@ -150,6 +150,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [surveyData, setSurveyData] = useState({ name: '', major: '', career_goal: '' });
+  
+  // NEW STATES FOR MASTER PROFILE
+  const [masterProfile, setMasterProfile] = useState(null);
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -158,7 +162,6 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // NEW: Fetch history logic
   useEffect(() => {
     if (user && (activeTab === 'documents' || activeTab === 'statistics')) {
       fetchUserHistory();
@@ -174,6 +177,24 @@ function App() {
     }
   };
 
+  // NEW: FUNCTION TO GENERATE MASTER PROFILE
+  const generateMasterProfile = async () => {
+    if (!user) return;
+    setIsSynthesizing(true);
+    try {
+      const response = await axios.post('http://localhost:5000/api/synthesize-profile', {
+        userId: user.uid,
+        userEmail: user.email
+      });
+      setMasterProfile(response.data);
+      setActiveTab('dashboard'); 
+    } catch (error) {
+      console.error("Error generating master profile", error);
+      alert("Please upload at least one document first!");
+    }
+    setIsSynthesizing(false);
+  };
+
   const handleLogin = async () => {
     try { await signInWithPopup(auth, googleProvider); } 
     catch (error) { console.error("Login Failed", error); }
@@ -182,6 +203,7 @@ function App() {
   const handleLogout = async () => {
     await signOut(auth);
     setProfile(null);
+    setMasterProfile(null);
     setFiles([]);
     setAnalyticsData(null);
     setActiveTab('dashboard');
@@ -282,7 +304,7 @@ function App() {
       </div>
 
       {/* MAIN CONTENT AREA */}
-      <main style={{ flex: 1, padding: '40px' }}>
+      <main style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
         
         {/* Top Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
@@ -295,6 +317,20 @@ function App() {
         {/* Dashboard View */}
         {activeTab === 'dashboard' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            
+            {/* SYNTHESIZE BANNER */}
+            <div style={{ textAlign: 'center', backgroundColor: '#f0fdf4', border: '2px dashed #2ecc71', padding: '25px', borderRadius: '12px' }}>
+              <h2>Synthesize Your Portfolio</h2>
+              <p>Combine all your uploaded coursework into one ultimate Master Profile.</p>
+              <button 
+                onClick={generateMasterProfile} 
+                disabled={isSynthesizing}
+                style={{ padding: '12px 25px', background: '#2ecc71', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                {isSynthesizing ? '🧠 Synthesizing Database...' : '✨ Generate Master Profile'}
+              </button>
+            </div>
+
             {/* Input Form Section */}
             <div style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
               <h3>Generate New Analysis</h3>
@@ -308,8 +344,67 @@ function App() {
               </button>
             </div>
 
-            {/* Profile Result Section */}
-            {profile && (
+            {/* MASTER PROFILE DISPLAY */}
+            {masterProfile && (
+              <div style={{ marginTop: '20px', borderTop: '5px solid #3498db', background: '#fff', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+                <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+                  <h1 style={{ color: '#2c3e50', margin: '0' }}>{masterProfile.professional_title}</h1>
+                  <p style={{ color: '#7f8c8d', fontSize: '18px', maxWidth: '800px', margin: '15px auto' }}>
+                    {masterProfile.bio}
+                  </p>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
+                  {/* Skills Section */}
+                  <div>
+                    <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>Categorized Skills</h3>
+                    <div style={{ display: 'flex', gap: '20px' }}>
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ color: '#27ae60' }}>Technical</h4>
+                        <ul>{masterProfile.skills?.technical?.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ color: '#e67e22' }}>Soft Skills</h4>
+                        <ul>{masterProfile.skills?.soft?.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Probability Chart Section */}
+                  <div>
+                    <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>Service Match Probability</h3>
+                    <div style={{ width: '100%', height: 300 }}>
+                      <ResponsiveContainer>
+                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={masterProfile.services}>
+                          <PolarGrid />
+                          <PolarAngleAxis dataKey="service_name" />
+                          <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                          <Radar name="Match %" dataKey="match_percentage" stroke="#3498db" fill="#3498db" fillOpacity={0.6} />
+                          <Tooltip />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Marketable Services Detail */}
+                <div style={{ marginTop: '30px' }}>
+                  <h3>Detailed Service Offerings</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px' }}>
+                    {masterProfile.services?.map((svc, i) => (
+                      <div key={i} style={{ padding: '15px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '5px solid #3498db' }}>
+                        <h4 style={{ margin: '0 0 5px 0' }}>{svc.service_name}</h4>
+                        <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#3498db' }}>Match: {svc.match_percentage}%</span>
+                        <p style={{ marginTop: '10px', fontSize: '14px', lineHeight: '1.4' }}>{svc.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Individual Profile Result Section */}
+            {profile && !masterProfile && (
               <div id="student-profile-report" style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
                 <h2>{surveyData.name}'s Result</h2>
                 <p><i>"{profile.bio}"</i></p>
@@ -320,7 +415,6 @@ function App() {
                     <p><strong>Soft:</strong> {profile.soft_skills?.join(', ')}</p>
                   </div>
                 </div>
-                {/* Analytics embedded here within the profile results */}
                 <AnalyticsDashboard analyticsData={profile?.analyticsData} />
                 <button onClick={downloadPDF} style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: '#27ae60', color: '#fff', border: 'none', borderRadius: '5px' }}>
                   📥 Download as PDF
