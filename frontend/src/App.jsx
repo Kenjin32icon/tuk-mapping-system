@@ -4,7 +4,7 @@ import html2pdf from 'html2pdf.js';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, googleProvider } from './firebase'; // Ensure you have firebase.js configured
 
-// Recharts imports for AnalyticsDashboard
+// Recharts imports
 import {
   BarChart,
   Bar,
@@ -16,52 +16,106 @@ import {
   Cell
 } from 'recharts';
 
-function AnalyticsDashboard({ analyticsData }) {
-  // BI Color Palette
-  const COLORS = ['#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6'];
+// --- NEW COMPONENTS FOR NAVIGATION ---
 
+// 1. Documents & History View
+function DocumentsView({ history }) {
+  return (
+    <div style={{ padding: '30px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
+      <h2 style={{ color: '#2c3e50' }}>Your Analyzed Documents</h2>
+      {history.length === 0 ? (
+        <p style={{ color: '#7f8c8d' }}>You haven't analyzed any documents yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
+          {history.map((item, index) => (
+            <div key={index} style={{ padding: '15px', border: '1px solid #eee', borderRadius: '8px', background: '#f9f9f9' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#3498db' }}>
+                Analysis from {new Date(item.createdAt).toLocaleDateString()}
+              </h4>
+              <p style={{ margin: '5px 0' }}><strong>Major:</strong> {item.surveyAnswers?.major || 'N/A'}</p>
+              <p style={{ margin: '5px 0' }}><strong>Employability Score:</strong> {item.generatedProfile?.employability_score}%</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 2. Statistics View
+function StatisticsView({ history }) {
+  const trendData = history.map((item) => ({
+    date: new Date(item.createdAt).toLocaleDateString(),
+    score: item.generatedProfile?.employability_score || 0
+  })).reverse();
+
+  return (
+    <div style={{ padding: '30px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
+      <h2 style={{ color: '#2c3e50' }}>Your Progress Statistics</h2>
+      <p style={{ color: '#7f8c8d' }}>Track how your employability score has changed over time.</p>
+      
+      {trendData.length > 0 ? (
+        <div style={{ width: '100%', height: 350, marginTop: '30px' }}>
+          <ResponsiveContainer>
+            <BarChart data={trendData}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="date" />
+              <YAxis domain={[0, 100]} />
+              <Tooltip cursor={{ fill: '#f8f9fa' }} />
+              <Bar dataKey="score" fill="#3498db" radius={[5, 5, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <p style={{ marginTop: '20px' }}>Upload more documents to see your progress trends!</p>
+      )}
+    </div>
+  );
+}
+
+// 3. Settings View
+function SettingsView({ user }) {
+  return (
+    <div style={{ padding: '30px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
+      <h2 style={{ color: '#2c3e50' }}>Profile Settings</h2>
+      <div style={{ marginTop: '20px', lineHeight: '2' }}>
+        <p><strong>Display Name:</strong> {user?.displayName}</p>
+        <p><strong>Email Address:</strong> {user?.email}</p>
+        <p><strong>Account ID:</strong> <code style={{ background: '#eee', padding: '2px 5px' }}>{user?.uid}</code></p>
+      </div>
+      <button style={{ marginTop: '20px', padding: '10px 20px', background: '#95a5a6', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+        Edit Profile Information
+      </button>
+      <p style={{ fontSize: '12px', color: '#7f8c8d', marginTop: '20px' }}>
+        Note: Core details are managed by your Google account.
+      </p>
+    </div>
+  );
+}
+
+// --- EXISTING ANALYTICS DASHBOARD ---
+function AnalyticsDashboard({ analyticsData }) {
+  const COLORS = ['#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6'];
   if (!analyticsData) return null;
   const { totalStudents, averageScore, chartData, topSkills } = analyticsData;
 
   return (
-    <div
-      style={{
-        marginTop: '50px',
-        padding: '30px',
-        background: '#fff',
-        borderRadius: '15px',
-        boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
-      }}
-    >
-      <h2 style={{ textAlign: 'center', color: '#2c3e50', marginBottom: '30px' }}>
-        Your Personal Career Analytics
-      </h2>
-
-      {/* KPI Cards */}
+    <div style={{ marginTop: '50px', padding: '30px', background: '#fff', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
+      <h2 style={{ textAlign: 'center', color: '#2c3e50', marginBottom: '30px' }}>Your Personal Career Analytics</h2>
       <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '40px' }}>
-        <div className="kpi-card" style={{ textAlign: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
           <h4 style={{ color: '#7f8c8d', margin: 0 }}>Documents Analyzed</h4>
-          <p style={{ fontSize: '32px', fontWeight: 'bold', margin: '5px 0' }}>
-            {totalStudents ?? 0}
-          </p>
+          <p style={{ fontSize: '32px', fontWeight: 'bold', margin: '5px 0' }}>{totalStudents ?? 0}</p>
         </div>
-
-        <div className="kpi-card" style={{ textAlign: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
           <h4 style={{ color: '#7f8c8d', margin: 0 }}>Avg. Employability</h4>
-          <p style={{ fontSize: '32px', fontWeight: 'bold', margin: '5px 0', color: '#2ecc71' }}>
-            {averageScore ?? 0}%
-          </p>
+          <p style={{ fontSize: '32px', fontWeight: 'bold', margin: '5px 0', color: '#2ecc71' }}>{averageScore ?? 0}%</p>
         </div>
       </div>
-
       <div style={{ display: 'flex', gap: '20px' }}>
-        {/* Employability Bar Chart */}
         <div style={{ flex: 1, height: 300 }}>
-          <h3 style={{ fontSize: '16px', color: '#34495e', textAlign: 'center' }}>
-            Employability Scores
-          </h3>
+          <h3 style={{ fontSize: '16px', color: '#34495e', textAlign: 'center' }}>Employability Scores</h3>
           <ResponsiveContainer>
-            {/* NEW: Added || [] to prevent .length crashes */}
             <BarChart data={chartData || []}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="name" />
@@ -75,14 +129,9 @@ function AnalyticsDashboard({ analyticsData }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-
-        {/* Skills Heatmap */}
         <div style={{ flex: 1, height: 300 }}>
-          <h3 style={{ fontSize: '16px', color: '#34495e', textAlign: 'center' }}>
-            Top Technical Skills Heatmap
-          </h3>
+          <h3 style={{ fontSize: '16px', color: '#34495e', textAlign: 'center' }}>Top Technical Skills Heatmap</h3>
           <ResponsiveContainer>
-            {/* NEW: Added || [] to prevent .length crashes */}
             <BarChart data={topSkills || []} layout="vertical" margin={{ left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} />
               <XAxis type="number" />
@@ -97,22 +146,17 @@ function AnalyticsDashboard({ analyticsData }) {
   );
 }
 
+// --- MAIN APP COMPONENT ---
 function App() {
-  // --- Auth State ---
   const [user, setUser] = useState(null);
-  
-  // --- Profile & UI State ---
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [userHistory, setUserHistory] = useState([]);
   const [files, setFiles] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(null);
-  const [surveyData, setSurveyData] = useState({
-    name: '',
-    major: '',
-    career_goal: ''
-  });
+  const [surveyData, setSurveyData] = useState({ name: '', major: '', career_goal: '' });
 
-  // Check login status on load
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -120,12 +164,25 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Login Failed", error);
+  // NEW: Fetch history logic
+  useEffect(() => {
+    if (user && (activeTab === 'documents' || activeTab === 'statistics')) {
+      fetchUserHistory();
     }
+  }, [user, activeTab]);
+
+  const fetchUserHistory = async () => {
+    try {
+      const response = await axios.get(`http://localhost:5000/api/user-history/${user.uid}`);
+      setUserHistory(response.data.history);
+    } catch (error) {
+      console.error("Error fetching history", error);
+    }
+  };
+
+  const handleLogin = async () => {
+    try { await signInWithPopup(auth, googleProvider); } 
+    catch (error) { console.error("Login Failed", error); }
   };
 
   const handleLogout = async () => {
@@ -133,17 +190,44 @@ function App() {
     setProfile(null);
     setFiles([]);
     setAnalyticsData(null);
+    setActiveTab('dashboard');
   };
 
   const handleInputChange = (e) => {
-    setSurveyData({
-      ...surveyData,
-      [e.target.name]: e.target.value
-    });
+    setSurveyData({ ...surveyData, [e.target.name]: e.target.value });
   };
 
   const handleFileChange = (e) => {
     setFiles(Array.from(e.target.files));
+  };
+
+  const handleUpload = async () => {
+    if (files.length === 0) return alert("Please upload at least one document.");
+    if (!surveyData.name || !surveyData.major) return alert("Name and Major are required.");
+
+    setLoading(true);
+    setProfile(null); 
+    setAnalyticsData(null); 
+
+    const formData = new FormData();
+    files.forEach((file) => formData.append('documents', file));
+    formData.append('survey', JSON.stringify(surveyData));
+    formData.append('userId', user.uid);
+    formData.append('userEmail', user.email);
+
+    try {
+      const response = await axios.post('http://localhost:5000/api/analyze-data', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setProfile(response.data);
+      if (response.data?.analyticsData) {
+        setAnalyticsData(response.data.analyticsData);
+      }
+    } catch (error) {
+      console.error("Error generating profile", error);
+      alert("Something went wrong!");
+    }
+    setLoading(false);
   };
 
   const downloadPDF = () => {
@@ -158,136 +242,106 @@ function App() {
     html2pdf().set(opt).from(element).save();
   };
 
-  const handleUpload = async () => {
-    if (files.length === 0) return alert("Please upload at least one document.");
-    if (!surveyData.name || !surveyData.major) return alert("Name and Major are required.");
-
-    setLoading(true);
-    setProfile(null); 
-    setAnalyticsData(null); 
-
-    const formData = new FormData();
-    files.forEach((file) => formData.append('documents', file));
-    formData.append('survey', JSON.stringify(surveyData));
-    
-    // Attach Auth credentials to payload
-    formData.append('userId', user.uid);
-    formData.append('userEmail', user.email);
-
-    try {
-      const response = await axios.post(
-        'http://localhost:5000/api/analyze-data',
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
-
-      setProfile(response.data);
-      if (response.data?.analyticsData) {
-        setAnalyticsData(response.data.analyticsData);
-      }
-    } catch (error) {
-      console.error("Error generating profile", error);
-      alert("Something went wrong!");
-    }
-    setLoading(false);
-  };
-
-  // --- LOGIN SCREEN UI ---
   if (!user) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#f4f7f6' }}>
-        <h1 style={{ color: '#2c3e50', marginBottom: '10px' }}>TU-K Mapping System</h1>
-        <p style={{ color: '#7f8c8d', marginBottom: '30px' }}>Securely analyze your coursework and build your career profile.</p>
-        <button 
-          onClick={handleLogin}
-          style={{ padding: '15px 30px', fontSize: '18px', backgroundColor: '#4285F4', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style={{ width: '20px', backgroundColor: 'white', borderRadius: '50%', padding: '2px' }}/>
+        <h1>TU-K Mapping System</h1>
+        <button onClick={handleLogin} style={{ padding: '15px 30px', fontSize: '18px', backgroundColor: '#4285F4', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '20px' }}/>
           Sign in with Google
         </button>
       </div>
     );
   }
 
-  // --- MAIN APP UI ---
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '40px', fontFamily: 'Arial, sans-serif' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f4f7f6', fontFamily: 'Arial, sans-serif' }}>
       
-      {/* Top Navbar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', paddingBottom: '20px', borderBottom: '1px solid #ddd' }}>
-        <div>
-          <h1 style={{ margin: 0, color: '#2c3e50' }}>TU-K Intelligent Mapping System</h1>
-          <p style={{ margin: 0, color: '#7f8c8d' }}>Welcome back, {user.displayName}</p>
-        </div>
-        <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-          Logout
-        </button>
+      {/* SIDEBAR NAVIGATION */}
+      <div style={{ width: '250px', background: '#2c3e50', color: '#ecf0f1', padding: '30px 20px' }}>
+        <h2 style={{ fontSize: '18px', marginBottom: '40px', textAlign: 'center' }}>TU-K BI System</h2>
+        <nav>
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            {[
+              { id: 'dashboard', label: '📊 Dashboard' },
+              { id: 'documents', label: '📁 My Documents' },
+              { id: 'statistics', label: '📈 Statistics' },
+              { id: 'settings', label: '⚙️ Settings' }
+            ].map((item) => (
+              <li 
+                key={item.id} 
+                onClick={() => setActiveTab(item.id)}
+                style={{
+                  padding: '12px 15px',
+                  marginBottom: '10px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  backgroundColor: activeTab === item.id ? '#3498db' : 'transparent',
+                  transition: '0.3s'
+                }}
+              >
+                {item.label}
+              </li>
+            ))}
+          </ul>
+        </nav>
       </div>
 
-      <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #dee2e6' }}>
-        <h3>Step 1: Student Details</h3>
-        <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
-          <input type="text" name="name" placeholder="Full Name" value={surveyData.name} onChange={handleInputChange} style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }} />
-          <input type="text" name="major" placeholder="Academic Major" value={surveyData.major} onChange={handleInputChange} style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }} />
+      {/* MAIN CONTENT AREA */}
+      <main style={{ flex: 1, padding: '40px' }}>
+        
+        {/* Top Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+          <h1 style={{ margin: 0, color: '#2c3e50' }}>{activeTab.toUpperCase()}</h1>
+          <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            Logout
+          </button>
         </div>
-        <input type="text" name="career_goal" placeholder="Dream Career Goal (Optional)" value={surveyData.career_goal} onChange={handleInputChange} style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
-      </div>
 
-      <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', border: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <h3 style={{ margin: '0 0 10px 0' }}>Step 2: Academic Documents</h3>
-          <input type="file" multiple accept=".pdf,.txt,.docx,.png,.jpg,.jpeg" onChange={handleFileChange} />
-          <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#7f8c8d' }}>
-            {files.length > 0 ? `${files.length} file(s) selected` : "Supported: PDF, DOCX, PNG, JPG, TXT"}
-          </p>
-        </div>
-        <button onClick={handleUpload} disabled={loading} style={{ padding: '12px 24px', backgroundColor: loading ? '#95a5a6' : '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '16px', fontWeight: 'bold' }}>
-          {loading ? '🤖 Analyzing Portfolio...' : 'Generate Profile Dashboard'}
-        </button>
-      </div>
-
-      {profile && (
-        <>
-          <div id="student-profile-report" style={{ marginTop: '40px', padding: '30px', border: '1px solid #e1e8ed', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', background: '#fff' }}>
-            <h2 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>{surveyData.name}'s Profile</h2>
-            <p style={{ fontSize: '18px', color: '#34495e', fontStyle: 'italic' }}>"{profile.bio}"</p>
-
-            <div style={{ display: 'flex', gap: '40px', marginTop: '30px' }}>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px', color: '#2c3e50' }}>Technical Skills</h3>
-                <ul style={{ paddingLeft: '20px', lineHeight: '1.6', marginBottom: '20px' }}>
-                  {profile.technical_skills?.map((skill, index) => <li key={index}><strong>{skill}</strong></li>)}
-                </ul>
-                <h3 style={{ borderBottom: '2px solid #f39c12', paddingBottom: '10px', color: '#2c3e50' }}>Soft Skills</h3>
-                <ul style={{ paddingLeft: '20px', lineHeight: '1.6' }}>
-                  {profile.soft_skills?.map((skill, index) => <li key={index}>{skill}</li>)}
-                </ul>
+        {/* Dashboard View */}
+        {activeTab === 'dashboard' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Input Form Section */}
+            <div style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+              <h3>Generate New Analysis</h3>
+              <div style={{ display: 'flex', gap: '15px', marginTop: '15px' }}>
+                <input type="text" name="name" placeholder="Full Name" value={surveyData.name} onChange={handleInputChange} style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }} />
+                <input type="text" name="major" placeholder="Major" value={surveyData.major} onChange={handleInputChange} style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }} />
               </div>
-
-              <div style={{ flex: 2 }}>
-                <h3 style={{ borderBottom: '2px solid #2ecc71', paddingBottom: '10px' }}>Marketable Services</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '15px' }}>
-                  {profile.marketable_services?.map((service, index) => (
-                    <div key={index} style={{ padding: '20px', background: '#fff', borderRadius: '8px', borderLeft: '5px solid #2ecc71', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                      <h4 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>{service.service_name}</h4>
-                      <p style={{ margin: 0, fontSize: '14px', color: '#7f8c8d', lineHeight: '1.5' }}>{service.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <input type="file" multiple onChange={handleFileChange} style={{ marginTop: '15px' }} />
+              <button onClick={handleUpload} disabled={loading} style={{ marginTop: '15px', width: '100%', padding: '12px', background: '#3498db', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                {loading ? '🤖 Analyzing Portfolio...' : 'Generate Profile Dashboard'}
+              </button>
             </div>
 
-            {/* Analytics dashboard under individual profile */}
-            {/* NEW: Ensure it pulls safely from the profile state */}
-            <AnalyticsDashboard analyticsData={profile?.analyticsData} />
+            {/* Profile Result Section */}
+            {profile && (
+              <div id="student-profile-report" style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                <h2>{surveyData.name}'s Result</h2>
+                <p><i>"{profile.bio}"</i></p>
+                <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
+                  <div style={{ flex: 1 }}>
+                    <h3>Skills</h3>
+                    <p><strong>Technical:</strong> {profile.technical_skills?.join(', ')}</p>
+                    <p><strong>Soft:</strong> {profile.soft_skills?.join(', ')}</p>
+                  </div>
+                </div>
+                {/* Analytics embedded here within the profile results */}
+                <AnalyticsDashboard analyticsData={profile?.analyticsData} />
+                <button onClick={downloadPDF} style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: '#27ae60', color: '#fff', border: 'none', borderRadius: '5px' }}>
+                  📥 Download as PDF
+                </button>
+              </div>
+            )}
           </div>
+        )}
 
-          <div style={{ textAlign: 'center', marginTop: '30px' }}>
-            <button onClick={downloadPDF} style={{ padding: '15px 30px', backgroundColor: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '18px', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(39, 174, 96, 0.3)' }}>
-              📥 Download Profile as PDF
-            </button>
-          </div>
-        </>
-      )}
+        {/* Conditional Tab Rendering */}
+        {activeTab === 'documents' && <DocumentsView history={userHistory} />}
+        {activeTab === 'statistics' && <StatisticsView history={userHistory} />}
+        {activeTab === 'settings' && <SettingsView user={user} />}
+
+      </main>
     </div>
   );
 }
