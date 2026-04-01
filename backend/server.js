@@ -28,6 +28,11 @@ const ProfileSchema = new mongoose.Schema({
     name: String,                                  // Student's Name
     surveyAnswers: Object,                         // Their major, goals, etc.
     generatedProfile: Object,                      // The AI generated JSON profile
+    // UPDATED: Document Storage Fields
+    documents: [{ 
+        documentName: String, 
+        documentUrl: String 
+    }],
     createdAt: { type: Date, default: Date.now }   // Timestamp
 });
 const Profile = mongoose.model('Profile', ProfileSchema);
@@ -53,7 +58,15 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
         
         // --- STEP A: THE OMNI-PARSER ---
         let combinedExtractedText = "";
+        let fileMetadata = []; // Prepare to store metadata
+
         for (const file of req.files) {
+            // Store metadata for the database
+            fileMetadata.push({
+                documentName: file.originalname,
+                documentUrl: "memory_storage" // Placeholder: update if using S3/Cloudinary
+            });
+
             const mimeType = file.mimetype;
             try {
                 if (mimeType === 'application/pdf') {
@@ -112,12 +125,14 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             throw new Error("Critical JSON failure. Llama output was unfixable.");
         }
 
+        // UPDATED: Saving the profile with document metadata
         const newProfile = new Profile({
             userId: userId,
             userEmail: userEmail,
             name: surveyData.name,
             surveyAnswers: surveyData,
-            generatedProfile: profileData
+            generatedProfile: profileData,
+            documents: fileMetadata // Saving original file info
         });
         await newProfile.save();
 
