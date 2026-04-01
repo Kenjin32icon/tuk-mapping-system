@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import html2pdf from 'html2pdf.js';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { auth, googleProvider } from './firebase'; // Ensure you have firebase.js configured
+import { auth, googleProvider } from './firebase'; 
 
 // Recharts imports
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis // <-- UPDATED IMPORTS
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis 
 } from 'recharts';
 
 // --- NEW COMPONENTS FOR NAVIGATION ---
@@ -143,57 +143,58 @@ function AnalyticsDashboard({ analyticsData }) {
 // --- MAIN APP COMPONENT ---
 function App() {
   const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [userHistory, setUserHistory] = useState([]);
-  const [files, setFiles] = useState([]);
+  const [files, setFiles] = useState([]); // Renamed from 'file' for multi-upload consistency
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(null);
-  const [surveyData, setSurveyData] = useState({ name: '', major: '', career_goal: '' });
   
-  // NEW STATES FOR MASTER PROFILE
+  // NEW STATES FOR PHASE 1
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [userHistory, setUserHistory] = useState([]);
   const [masterProfile, setMasterProfile] = useState(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [isAppLoading, setIsAppLoading] = useState(true); // Prevents UI flickering
 
+  const [surveyData, setSurveyData] = useState({ name: '', major: '', career_goal: '' });
+
+  // --- PHASE 1: PERSISTENT DASHBOARD LOGIC ---
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      
+      if (currentUser) {
+        // 1. If user logs in, fetch their history immediately
+        try {
+          const response = await axios.get(`http://localhost:5000/api/user-history/${currentUser.uid}`);
+          const history = response.data.history;
+          
+          setUserHistory(history);
+
+          // 2. If they have past documents, automatically load the most recent one into the dashboard!
+          if (history.length > 0) {
+            setProfile(history[0].generatedProfile);
+            
+            // 3. Fetch their aggregated analytics to populate the charts
+            // Note: Ensure your backend has this /api/analytics endpoint or uses the logic from analyze-data
+            const analyticsResponse = await axios.get(`http://localhost:5000/api/user-history/${currentUser.uid}`);
+            // Logic for extracting analytics from history if a dedicated endpoint isn't ready:
+            if(history[0].analyticsData) setAnalyticsData(history[0].analyticsData);
+          }
+        } catch (error) {
+          console.error("Error fetching persistent data:", error);
+        }
+      } else {
+        // Reset states if they log out
+        setProfile(null);
+        setAnalyticsData(null);
+        setUserHistory([]);
+        setMasterProfile(null);
+      }
+      setIsAppLoading(false); // Done loading initial state
     });
+
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (user && (activeTab === 'documents' || activeTab === 'statistics')) {
-      fetchUserHistory();
-    }
-  }, [user, activeTab]);
-
-  const fetchUserHistory = async () => {
-    try {
-      const response = await axios.get(`http://localhost:5000/api/user-history/${user.uid}`);
-      setUserHistory(response.data.history);
-    } catch (error) {
-      console.error("Error fetching history", error);
-    }
-  };
-
-  // NEW: FUNCTION TO GENERATE MASTER PROFILE
-  const generateMasterProfile = async () => {
-    if (!user) return;
-    setIsSynthesizing(true);
-    try {
-      const response = await axios.post('http://localhost:5000/api/synthesize-profile', {
-        userId: user.uid,
-        userEmail: user.email
-      });
-      setMasterProfile(response.data);
-      setActiveTab('dashboard'); 
-    } catch (error) {
-      console.error("Error generating master profile", error);
-      alert("Please upload at least one document first!");
-    }
-    setIsSynthesizing(false);
-  };
 
   const handleLogin = async () => {
     try { await signInWithPopup(auth, googleProvider); } 
@@ -202,11 +203,6 @@ function App() {
 
   const handleLogout = async () => {
     await signOut(auth);
-    setProfile(null);
-    setMasterProfile(null);
-    setFiles([]);
-    setAnalyticsData(null);
-    setActiveTab('dashboard');
   };
 
   const handleInputChange = (e) => {
@@ -239,11 +235,31 @@ function App() {
       if (response.data?.analyticsData) {
         setAnalyticsData(response.data.analyticsData);
       }
+      // Refresh history after new upload
+      const histRes = await axios.get(`http://localhost:5000/api/user-history/${user.uid}`);
+      setUserHistory(histRes.data.history);
     } catch (error) {
       console.error("Error generating profile", error);
       alert("Something went wrong!");
     }
     setLoading(false);
+  };
+
+  const generateMasterProfile = async () => {
+    if (!user) return;
+    setIsSynthesizing(true);
+    try {
+      const response = await axios.post('http://localhost:5000/api/synthesize-profile', {
+        userId: user.uid,
+        userEmail: user.email
+      });
+      setMasterProfile(response.data);
+      setActiveTab('dashboard'); 
+    } catch (error) {
+      console.error("Error generating master profile", error);
+      alert("Please upload at least one document first!");
+    }
+    setIsSynthesizing(false);
   };
 
   const downloadPDF = () => {
@@ -257,6 +273,10 @@ function App() {
     };
     html2pdf().set(opt).from(element).save();
   };
+
+  if (isAppLoading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading TU-K System...</div>;
+  }
 
   if (!user) {
     return (
@@ -314,11 +334,9 @@ function App() {
           </button>
         </div>
 
-        {/* Dashboard View */}
         {activeTab === 'dashboard' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
-            {/* SYNTHESIZE BANNER */}
             <div style={{ textAlign: 'center', backgroundColor: '#f0fdf4', border: '2px dashed #2ecc71', padding: '25px', borderRadius: '12px' }}>
               <h2>Synthesize Your Portfolio</h2>
               <p>Combine all your uploaded coursework into one ultimate Master Profile.</p>
@@ -331,7 +349,6 @@ function App() {
               </button>
             </div>
 
-            {/* Input Form Section */}
             <div style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
               <h3>Generate New Analysis</h3>
               <div style={{ display: 'flex', gap: '15px', marginTop: '15px' }}>
@@ -344,18 +361,13 @@ function App() {
               </button>
             </div>
 
-            {/* MASTER PROFILE DISPLAY */}
             {masterProfile && (
               <div style={{ marginTop: '20px', borderTop: '5px solid #3498db', background: '#fff', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
                 <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                   <h1 style={{ color: '#2c3e50', margin: '0' }}>{masterProfile.professional_title}</h1>
-                  <p style={{ color: '#7f8c8d', fontSize: '18px', maxWidth: '800px', margin: '15px auto' }}>
-                    {masterProfile.bio}
-                  </p>
+                  <p style={{ color: '#7f8c8d', fontSize: '18px', maxWidth: '800px', margin: '15px auto' }}>{masterProfile.bio}</p>
                 </div>
-
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
-                  {/* Skills Section */}
                   <div>
                     <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>Categorized Skills</h3>
                     <div style={{ display: 'flex', gap: '20px' }}>
@@ -369,8 +381,6 @@ function App() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Probability Chart Section */}
                   <div>
                     <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>Service Match Probability</h3>
                     <div style={{ width: '100%', height: 300 }}>
@@ -386,36 +396,21 @@ function App() {
                     </div>
                   </div>
                 </div>
-                
-                {/* Marketable Services Detail */}
-                <div style={{ marginTop: '30px' }}>
-                  <h3>Detailed Service Offerings</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px' }}>
-                    {masterProfile.services?.map((svc, i) => (
-                      <div key={i} style={{ padding: '15px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '5px solid #3498db' }}>
-                        <h4 style={{ margin: '0 0 5px 0' }}>{svc.service_name}</h4>
-                        <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#3498db' }}>Match: {svc.match_percentage}%</span>
-                        <p style={{ marginTop: '10px', fontSize: '14px', lineHeight: '1.4' }}>{svc.description}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
             )}
 
-            {/* Individual Profile Result Section */}
             {profile && !masterProfile && (
               <div id="student-profile-report" style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-                <h2>{surveyData.name}'s Result</h2>
+                <h2>{surveyData.name || 'Your'} Result</h2>
                 <p><i>"{profile.bio}"</i></p>
                 <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
                   <div style={{ flex: 1 }}>
                     <h3>Skills</h3>
-                    <p><strong>Technical:</strong> {profile.technical_skills?.join(', ')}</p>
+                    <p><strong>Technical:</strong> {profile.acquired_skills?.join(', ')}</p>
                     <p><strong>Soft:</strong> {profile.soft_skills?.join(', ')}</p>
                   </div>
                 </div>
-                <AnalyticsDashboard analyticsData={profile?.analyticsData} />
+                <AnalyticsDashboard analyticsData={analyticsData} />
                 <button onClick={downloadPDF} style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: '#27ae60', color: '#fff', border: 'none', borderRadius: '5px' }}>
                   📥 Download as PDF
                 </button>
@@ -424,7 +419,6 @@ function App() {
           </div>
         )}
 
-        {/* Conditional Tab Rendering */}
         {activeTab === 'documents' && <DocumentsView history={userHistory} />}
         {activeTab === 'statistics' && <StatisticsView history={userHistory} />}
         {activeTab === 'settings' && <SettingsView user={user} />}

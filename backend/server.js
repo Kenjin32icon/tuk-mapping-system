@@ -23,17 +23,19 @@ mongoose.connect('mongodb://localhost:27017/tuk-mapping')
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
 const ProfileSchema = new mongoose.Schema({
-    userId: { type: String, required: true },      // Google User ID (Security)
-    userEmail: { type: String, required: true },   // Google Email (Security)
-    name: String,                                  // Student's Name
-    surveyAnswers: Object,                         // Their major, goals, etc.
-    generatedProfile: Object,                      // The AI generated JSON profile
-    // UPDATED: Document Storage Fields
+    userId: { type: String, required: true },
+    userEmail: { type: String, required: true },
+    name: String,
+    surveyAnswers: Object,
+    generatedProfile: Object,
+    // NEW: Saves the names of the files they uploaded!
+    analyzedDocuments: [String], 
+    // Keeps track of detailed document metadata
     documents: [{ 
         documentName: String, 
         documentUrl: String 
     }],
-    createdAt: { type: Date, default: Date.now }   // Timestamp
+    createdAt: { type: Date, default: Date.now }
 });
 const Profile = mongoose.model('Profile', ProfileSchema);
 
@@ -58,13 +60,12 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
         
         // --- STEP A: THE OMNI-PARSER ---
         let combinedExtractedText = "";
-        let fileMetadata = []; // Prepare to store metadata
+        let fileMetadata = [];
 
         for (const file of req.files) {
-            // Store metadata for the database
             fileMetadata.push({
                 documentName: file.originalname,
-                documentUrl: "memory_storage" // Placeholder: update if using S3/Cloudinary
+                documentUrl: "memory_storage"
             });
 
             const mimeType = file.mimetype;
@@ -125,17 +126,22 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
             throw new Error("Critical JSON failure. Llama output was unfixable.");
         }
 
-        // UPDATED: Saving the profile with document metadata
+        // NEW: Extract the original names of the files uploaded
+        const uploadedFileNames = req.files.map(file => file.originalname);
+
+        // UPDATED: Saving the profile with document names
         const newProfile = new Profile({
             userId: userId,
             userEmail: userEmail,
             name: surveyData.name,
             surveyAnswers: surveyData,
             generatedProfile: profileData,
-            documents: fileMetadata // Saving original file info
+            analyzedDocuments: uploadedFileNames, // Save file names
+            documents: fileMetadata
         });
         await newProfile.save();
 
+        // Calculate immediate response analytics
         const userProfiles = await Profile.find({ userId: userId });
         const totalDocuments = userProfiles.length;
         const totalScore = userProfiles.reduce((acc, p) => acc + (p.generatedProfile?.employability_score || 0), 0);
@@ -189,16 +195,13 @@ app.post('/api/synthesize-profile', async (req, res) => {
 
         console.log(`--- Synthesizing Master Profile for: ${userEmail} ---`);
 
-        // 1. Fetch all past analyses for this user
         const userHistory = await Profile.find({ userId: userId });
         if (userHistory.length === 0) {
             return res.status(400).send("No documents found to analyze.");
         }
 
-        // 2. Extract just the AI data to save context window space
         const pastProfiles = userHistory.map(doc => doc.generatedProfile);
 
-        // 3. The Master Prompt
         const synthesisPrompt = `
         You are an expert Career Mapping AI. Review the following separate document analyses for a single student.
         Synthesize them into ONE comprehensive master profile.
@@ -214,7 +217,6 @@ app.post('/api/synthesize-profile', async (req, res) => {
         Past Analyses Data: ${JSON.stringify(pastProfiles)}
         `;
 
-        // 4. Send to Llama
         const response = await axios.post('http://localhost:11434/api/generate', {
             model: 'llama3.2:1b',
             prompt: synthesisPrompt,
@@ -222,7 +224,6 @@ app.post('/api/synthesize-profile', async (req, res) => {
             options: { temperature: 0.6, num_ctx: 2048, num_predict: 500 }
         });
 
-        // 5. Auto-Heal & Parse
         const repairedJson = jsonrepair(response.data.response);
         const masterProfile = JSON.parse(repairedJson);
 
@@ -249,6 +250,51 @@ app.get('/api/user-history/:userId', async (req, res) => {
     } catch (error) {
         console.error('❌ Error fetching user history:', error.message);
         res.status(500).send('An error occurred while fetching history.');
+    }
+});
+
+
+// ─── Route: Fetch Personal Analytics for Persistent Dashboard ─────────────────
+// Added to allow frontend to fetch historical data upon login
+app.get('/api/analytics/:userId', async (req, res) => {
+    try {
+        const userProfiles = await Profile.find({ userId: req.params.userId });
+        const totalDocuments = userProfiles.length;
+        
+        const totalScore = userProfiles.reduce((acc, p) => acc + (p.generatedProfile?.employability_score || 0), 0);
+        const avgScore = totalDocuments > 0 ? (totalScore / totalDocuments) : 0;
+
+        const chartData = userProfiles.map((p, index) => ({
+            name: `Doc ${index + 1}`,
+            score: p.generatedProfile?.employability_score || 0
+        }));
+
+        const skillCounts = {};
+        userProfiles.forEach(p => {
+            const skills = p.generatedProfile?.acquired_skills;
+            if (skills && Array.isArray(skills)) {
+                skills.forEach(skill => {
+                    if (typeof skill === 'string' && skill.trim() !== '') {
+                        const cleanSkill = skill.trim().charAt(0).toUpperCase() + skill.trim().slice(1).toLowerCase();
+                        skillCounts[cleanSkill] = (skillCounts[cleanSkill] || 0) + 1;
+                    }
+                });
+            }
+        });
+        
+        const topSkills = Object.keys(skillCounts)
+            .map(skill => ({ name: skill, count: skillCounts[skill] }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+
+        res.json({
+            totalStudents: totalDocuments, 
+            averageScore: avgScore.toFixed(1),
+            chartData,
+            topSkills 
+        });
+    } catch (error) {
+        res.status(500).send('Error fetching personal analytics');
     }
 });
 
