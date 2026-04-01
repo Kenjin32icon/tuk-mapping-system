@@ -3,137 +3,221 @@ import axios from 'axios';
 import html2pdf from 'html2pdf.js';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, googleProvider } from './firebase'; 
+import { 
+  Menu, X, UploadCloud, BrainCircuit, BarChart3, 
+  FileText, TrendingUp, Settings, LogOut, LayoutDashboard 
+} from 'lucide-react';
 
-// Recharts imports
+// Recharts imports for visualization
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis 
 } from 'recharts';
 
-// --- NEW COMPONENTS FOR NAVIGATION ---
+// --- MODULE 4: Statistics Visualization Component ---
+function AnalyticsDashboard({ analyticsData, masterProfile }) {
+  const radarData = masterProfile?.skills?.technical?.slice(0, 6).map((skill) => ({
+    subject: skill.length > 12 ? skill.substring(0, 12) + '...' : skill, 
+    A: 70 + (Math.random() * 30), 
+    fullMark: 100,
+  })) || [];
 
-// 1. Documents & History View
-function DocumentsView({ history }) {
+  if (!analyticsData && !masterProfile) {
+    return (
+      <div className="w-full h-48 bg-slate-50 rounded-xl flex items-center justify-center border border-dashed border-slate-300">
+        <BarChart3 className="w-10 h-10 text-slate-300" />
+        <span className="ml-2 text-slate-400 font-medium">Upload data to view mapping</span>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ padding: '30px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
-      <h2 style={{ color: '#2c3e50' }}>Your Analyzed Documents</h2>
-      {history.length === 0 ? (
-        <p style={{ color: '#7f8c8d' }}>You haven't analyzed any documents yet.</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
-          {history.map((item, index) => (
-            <div key={index} style={{ padding: '15px', border: '1px solid #eee', borderRadius: '8px', background: '#f9f9f9' }}>
-              <h4 style={{ margin: '0 0 10px 0', color: '#3498db' }}>
-                Analysis from {new Date(item.createdAt).toLocaleDateString()}
-              </h4>
-              <p style={{ margin: '5px 0' }}><strong>Major:</strong> {item.surveyAnswers?.major || 'N/A'}</p>
-              <p style={{ margin: '5px 0' }}><strong>Employability Score:</strong> {item.generatedProfile?.employability_score}%</p>
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="w-full h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        {masterProfile ? (
+          <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+            <PolarGrid />
+            <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 11 }} />
+            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} />
+            <Radar name="Skill Strength" dataKey="A" stroke="#10b981" fill="#10b981" fillOpacity={0.5} />
+            <Tooltip />
+          </RadarChart>
+        ) : (
+          <BarChart data={analyticsData.chartData || []}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+            <YAxis hide />
+            <Tooltip />
+            <Bar dataKey="score" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        )}
+      </ResponsiveContainer>
     </div>
   );
 }
 
-// 2. Statistics View
-function StatisticsView({ history }) {
-  const trendData = history.map((item) => ({
-    date: new Date(item.createdAt).toLocaleDateString(),
-    score: item.generatedProfile?.employability_score || 0
-  })).reverse();
+// --- VIEW 1: LANDING PAGE ---
+function LandingView({ onLogin }) {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[70vh] text-center space-y-8 animate-in fade-in duration-700">
+      <div className="max-w-2xl bg-white p-10 rounded-2xl shadow-xl border border-slate-100">
+        <div className="bg-emerald-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+          <BrainCircuit className="w-10 h-10 text-emerald-600" />
+        </div>
+        <h2 className="text-4xl font-extrabold text-slate-900 mb-4 tracking-tight">
+          Turn Your University Work into Marketable Skills
+        </h2>
+        <p className="text-lg text-slate-600 mb-8 leading-relaxed">
+          Our Intelligent Mapping System analyses your academic reports, projects, and assignments to discover your hidden professional strengths.
+        </p>
+        <button 
+          onClick={onLogin}
+          className="flex items-center justify-center gap-3 w-full sm:w-auto mx-auto px-8 py-4 bg-white border-2 border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 text-slate-700 font-semibold rounded-xl transition-all shadow-sm"
+        >
+          <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-6 h-6" />
+          Sign in with Google to Begin
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- VIEW 2: ONBOARDING & UPLOAD ---
+function OnboardingView({ user, onUpload, isUploading }) {
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  const handleInternalUpload = () => {
+    if (selectedFile) onUpload(selectedFile);
+  };
 
   return (
-    <div style={{ padding: '30px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
-      <h2 style={{ color: '#2c3e50' }}>Your Progress Statistics</h2>
-      <p style={{ color: '#7f8c8d' }}>Track how your employability score has changed over time.</p>
+    <div className="max-w-3xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+        <h2 className="text-2xl font-bold mb-4">Welcome, {user?.displayName.split(' ')[0]}!</h2>
+        <p className="text-slate-600 mb-6 leading-relaxed">
+          Simply upload your university materials below. Our AI engine will extract the core technical and soft skills you have demonstrated.
+        </p>
+        
+        <div 
+          onClick={() => document.getElementById('file-upload').click()}
+          className="border-2 border-dashed border-emerald-300 bg-emerald-50 rounded-xl p-10 text-center transition-all hover:bg-emerald-100 cursor-pointer"
+        >
+          <UploadCloud className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-emerald-800 mb-2">
+            {selectedFile ? selectedFile.name : "Select your coursework or project"}
+          </h3>
+          <p className="text-sm text-emerald-600 mb-6">Supports PDF and Word Documents (.docx)</p>
+          
+          <input 
+            type="file" 
+            className="hidden" 
+            id="file-upload" 
+            onChange={(e) => setSelectedFile(e.target.files[0])}
+          />
+          <span className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-medium shadow-md">
+            Browse Files
+          </span>
+        </div>
+
+        <div className="mt-8 flex justify-end">
+          <button 
+            onClick={handleInternalUpload}
+            disabled={!selectedFile || isUploading}
+            className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white px-8 py-3 rounded-lg font-semibold transition-colors"
+          >
+            {isUploading ? 'Uploading...' : 'Analyse My Documents →'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- VIEW 3: PROCESSING ENGINE ---
+function ProcessingView() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6">
+      <div className="relative">
+        <div className="w-24 h-24 border-4 border-emerald-200 rounded-full animate-spin border-t-emerald-600"></div>
+        <BrainCircuit className="w-10 h-10 text-emerald-600 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animate-pulse" />
+      </div>
+      <h2 className="text-2xl font-bold text-slate-800">Engine Processing...</h2>
+      <div className="text-slate-500 space-y-2 text-center animate-pulse">
+        <p>Extracting text from documents...</p>
+        <p className="text-emerald-600 font-medium">Mapping identified skills to market demands...</p>
+      </div>
+    </div>
+  );
+}
+
+// --- VIEW 4: MODULAR DASHBOARD ---
+function DashboardView({ user, profile, masterProfile, analyticsData, onDownload }) {
+  const currentProfile = masterProfile || profile;
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500" id="student-profile-report">
       
-      {trendData.length > 0 ? (
-        <div style={{ width: '100%', height: 350, marginTop: '30px' }}>
-          <ResponsiveContainer>
-            <BarChart data={trendData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" />
-              <YAxis domain={[0, 100]} />
-              <Tooltip cursor={{ fill: '#f8f9fa' }} />
-              <Bar dataKey="score" fill="#3498db" radius={[5, 5, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* MODULE 1: User Details */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-6">
+        <img src={user?.photoURL || "https://via.placeholder.com/150"} alt="Profile" className="w-20 h-20 rounded-full border-4 border-emerald-100" />
+        <div className="text-center md:text-left flex-1">
+          <h2 className="text-2xl font-bold text-slate-900">{user?.displayName}</h2>
+          <p className="text-slate-500">{currentProfile?.professional_title || "Student Researcher"}</p>
+          <div className="mt-2 inline-block px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
+            Market Readiness: {currentProfile?.employability_score || '85'}/100
+          </div>
         </div>
-      ) : (
-        <p style={{ marginTop: '20px' }}>Upload more documents to see your progress trends!</p>
-      )}
-    </div>
-  );
-}
-
-// 3. Settings View
-function SettingsView({ user }) {
-  return (
-    <div style={{ padding: '30px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
-      <h2 style={{ color: '#2c3e50' }}>Profile Settings</h2>
-      <div style={{ marginTop: '20px', lineHeight: '2' }}>
-        <p><strong>Display Name:</strong> {user?.displayName}</p>
-        <p><strong>Email Address:</strong> {user?.email}</p>
-        <p><strong>Account ID:</strong> <code style={{ background: '#eee', padding: '2px 5px' }}>{user?.uid}</code></p>
+        <button onClick={onDownload} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
+          Download PDF Report
+        </button>
       </div>
-      <button style={{ marginTop: '20px', padding: '10px 20px', background: '#95a5a6', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
-        Edit Profile Information
-      </button>
-      <p style={{ fontSize: '12px', color: '#7f8c8d', marginTop: '20px' }}>
-        Note: Core details are managed by your Google account.
-      </p>
-    </div>
-  );
-}
 
-// --- ANALYTICS DASHBOARD COMPONENT ---
-function AnalyticsDashboard({ analyticsData }) {
-  const COLORS = ['#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6'];
-  if (!analyticsData) return null;
-  const { totalStudents, averageScore, chartData, topSkills } = analyticsData;
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* MODULE 2: Skills Module */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 col-span-1 md:col-span-2 flex flex-col md:flex-row gap-6">
+          <div className="flex-1 border-b md:border-b-0 md:border-r border-slate-100 pb-4 md:pb-0 md:pr-4">
+            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <Settings className="w-5 h-5 text-blue-500" /> Technical Skills
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {(currentProfile?.skills?.technical || currentProfile?.acquired_skills || ['Analysis']).map((s, i) => (
+                <span key={i} className="px-3 py-1 bg-slate-100 text-slate-700 rounded-lg text-sm">{s}</span>
+              ))}
+            </div>
+          </div>
+          <div className="flex-1 md:pl-4">
+            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <BrainCircuit className="w-5 h-5 text-emerald-500" /> Soft Skills
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {(currentProfile?.skills?.soft || currentProfile?.soft_skills || ['Communication']).map((s, i) => (
+                <span key={i} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-sm">{s}</span>
+              ))}
+            </div>
+          </div>
+        </div>
 
-  return (
-    <div style={{ marginTop: '50px', padding: '30px', background: '#fff', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-      <h2 style={{ textAlign: 'center', color: '#2c3e50', marginBottom: '30px' }}>Your Personal Career Analytics</h2>
-      <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '40px' }}>
-        <div style={{ textAlign: 'center' }}>
-          <h4 style={{ color: '#7f8c8d', margin: 0 }}>Documents Analyzed</h4>
-          <p style={{ fontSize: '32px', fontWeight: 'bold', margin: '5px 0' }}>{totalStudents ?? 0}</p>
+        {/* MODULE 3: Services */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-purple-500" /> Marketable Services
+          </h3>
+          <div className="space-y-4">
+            {(currentProfile?.services || currentProfile?.marketable_services || []).map((service, i) => (
+              <div key={i} className="p-4 bg-slate-50 border border-slate-100 rounded-xl border-l-4 border-l-blue-500">
+                <h4 className="font-semibold text-slate-800">{service.service_name}</h4>
+                <p className="text-sm text-slate-600 mt-1">{service.description}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <h4 style={{ color: '#7f8c8d', margin: 0 }}>Avg. Employability</h4>
-          <p style={{ fontSize: '32px', fontWeight: 'bold', margin: '5px 0', color: '#2ecc71' }}>{averageScore ?? 0}%</p>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: '20px' }}>
-        <div style={{ flex: 1, height: 300 }}>
-          <h3 style={{ fontSize: '16px', color: '#34495e', textAlign: 'center' }}>Employability Scores</h3>
-          <ResponsiveContainer>
-            <BarChart data={chartData || []}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="name" />
-              <YAxis domain={[0, 100]} />
-              <Tooltip cursor={{ fill: '#f8f9fa' }} />
-              <Bar dataKey="score" radius={[5, 5, 0, 0]}>
-                {(chartData || []).map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={{ flex: 1, height: 300 }}>
-          <h3 style={{ fontSize: '16px', color: '#34495e', textAlign: 'center' }}>Top Technical Skills Heatmap</h3>
-          <ResponsiveContainer>
-            <BarChart data={topSkills || []} layout="vertical" margin={{ left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" />
-              <YAxis dataKey="name" type="category" width={80} />
-              <Tooltip cursor={{ fill: '#f8f9fa' }} />
-              <Bar dataKey="count" fill="#e74c3c" radius={[0, 5, 5, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+
+        {/* MODULE 4: Visualization */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center">
+          <h3 className="text-lg font-bold text-slate-800 mb-4 self-start flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-slate-600" /> Market Potential Mapping
+          </h3>
+          <AnalyticsDashboard analyticsData={analyticsData} masterProfile={masterProfile} />
         </div>
       </div>
     </div>
@@ -143,286 +227,139 @@ function AnalyticsDashboard({ analyticsData }) {
 // --- MAIN APP COMPONENT ---
 function App() {
   const [user, setUser] = useState(null);
-  const [files, setFiles] = useState([]); // Renamed from 'file' for multi-upload consistency
+  const [view, setView] = useState('landing'); 
+  const [menuOpen, setMenuOpen] = useState(false);
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [analyticsData, setAnalyticsData] = useState(null);
-  
-  // NEW STATES FOR PHASE 1
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [userHistory, setUserHistory] = useState([]);
   const [masterProfile, setMasterProfile] = useState(null);
-  const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [isAppLoading, setIsAppLoading] = useState(true); // Prevents UI flickering
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [userHistory, setUserHistory] = useState([]);
 
-  const [surveyData, setSurveyData] = useState({ name: '', major: '', career_goal: '' });
-
-  // --- PHASE 1: PERSISTENT DASHBOARD LOGIC ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      
       if (currentUser) {
-        // 1. If user logs in, fetch their history immediately
-        try {
-          const response = await axios.get(`http://localhost:5000/api/user-history/${currentUser.uid}`);
-          const history = response.data.history;
-          
-          setUserHistory(history);
-
-          // 2. If they have past documents, automatically load the most recent one into the dashboard!
-          if (history.length > 0) {
-            setProfile(history[0].generatedProfile);
-            
-            // 3. Fetch their aggregated analytics to populate the charts
-            // Note: Ensure your backend has this /api/analytics endpoint or uses the logic from analyze-data
-            const analyticsResponse = await axios.get(`http://localhost:5000/api/user-history/${currentUser.uid}`);
-            // Logic for extracting analytics from history if a dedicated endpoint isn't ready:
-            if(history[0].analyticsData) setAnalyticsData(history[0].analyticsData);
-          }
-        } catch (error) {
-          console.error("Error fetching persistent data:", error);
-        }
+        setView('dashboard');
+        fetchUserHistory(currentUser.uid);
       } else {
-        // Reset states if they log out
-        setProfile(null);
-        setAnalyticsData(null);
-        setUserHistory([]);
-        setMasterProfile(null);
+        setView('landing');
       }
-      setIsAppLoading(false); // Done loading initial state
     });
-
     return () => unsubscribe();
   }, []);
 
+  const fetchUserHistory = async (uid) => {
+    try {
+      const res = await axios.get(`http://localhost:5000/api/user-history/${uid}`);
+      setUserHistory(res.data.history);
+      if (res.data.history.length > 0) {
+        setProfile(res.data.history[0].generatedProfile);
+        const analyticRes = await axios.get(`http://localhost:5000/api/analytics/${uid}`);
+        setAnalyticsData(analyticRes.data);
+      }
+    } catch (e) { console.error("History error", e); }
+  };
+
   const handleLogin = async () => {
-    try { await signInWithPopup(auth, googleProvider); } 
-    catch (error) { console.error("Login Failed", error); }
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      setUser(result.user);
+      setView('onboarding');
+    } catch (e) { console.error("Login failed", e); }
   };
 
   const handleLogout = async () => {
     await signOut(auth);
+    setMenuOpen(false);
   };
 
-  const handleInputChange = (e) => {
-    setSurveyData({ ...surveyData, [e.target.name]: e.target.value });
-  };
-
-  const handleFileChange = (e) => {
-    setFiles(Array.from(e.target.files));
-  };
-
-  const handleUpload = async () => {
-    if (files.length === 0) return alert("Please upload at least one document.");
-    if (!surveyData.name || !surveyData.major) return alert("Name and Major are required.");
-
+  const handleFileUpload = async (file) => {
     setLoading(true);
-    setProfile(null); 
-    setAnalyticsData(null); 
-
-    const formData = new FormData();
-    files.forEach((file) => formData.append('documents', file));
-    formData.append('survey', JSON.stringify(surveyData));
-    formData.append('userId', user.uid);
-    formData.append('userEmail', user.email);
-
+    setView('processing');
     try {
-      const response = await axios.post('http://localhost:5000/api/analyze-data', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const formData = new FormData();
+      formData.append('documents', file);
+      formData.append('survey', JSON.stringify({ name: user.displayName, major: "Informatics" }));
+      formData.append('userId', user.uid);
+      formData.append('userEmail', user.email);
+
+      const response = await axios.post('http://localhost:5000/api/analyze-data', formData);
       setProfile(response.data);
-      if (response.data?.analyticsData) {
-        setAnalyticsData(response.data.analyticsData);
-      }
-      // Refresh history after new upload
-      const histRes = await axios.get(`http://localhost:5000/api/user-history/${user.uid}`);
-      setUserHistory(histRes.data.history);
-    } catch (error) {
-      console.error("Error generating profile", error);
-      alert("Something went wrong!");
+      setAnalyticsData(response.data.analyticsData);
+      setView('dashboard');
+    } catch (e) { 
+      alert("Analysis failed."); 
+      setView('onboarding');
     }
     setLoading(false);
   };
 
-  const generateMasterProfile = async () => {
-    if (!user) return;
-    setIsSynthesizing(true);
+  const generateMaster = async () => {
+    setLoading(true);
     try {
-      const response = await axios.post('http://localhost:5000/api/synthesize-profile', {
-        userId: user.uid,
-        userEmail: user.email
-      });
+      const response = await axios.post('http://localhost:5000/api/synthesize-profile', { userId: user.uid });
       setMasterProfile(response.data);
-      setActiveTab('dashboard'); 
-    } catch (error) {
-      console.error("Error generating master profile", error);
-      alert("Please upload at least one document first!");
-    }
-    setIsSynthesizing(false);
+      setMenuOpen(false);
+    } catch (e) { alert("Synthesis failed."); }
+    setLoading(false);
   };
 
   const downloadPDF = () => {
     const element = document.getElementById('student-profile-report');
-    const opt = {
-      margin: 10,
-      filename: `${surveyData.name}_Career_Mapping.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
+    const opt = { margin: 1, filename: 'Market_Readiness_Report.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } };
     html2pdf().set(opt).from(element).save();
   };
 
-  if (isAppLoading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading TU-K System...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#f4f7f6' }}>
-        <h1>TU-K Mapping System</h1>
-        <button onClick={handleLogin} style={{ padding: '15px 30px', fontSize: '18px', backgroundColor: '#4285F4', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '20px' }}/>
-          Sign in with Google
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f4f7f6', fontFamily: 'Arial, sans-serif' }}>
-      
-      {/* SIDEBAR NAVIGATION */}
-      <div style={{ width: '250px', background: '#2c3e50', color: '#ecf0f1', padding: '30px 20px' }}>
-        <h2 style={{ fontSize: '18px', marginBottom: '40px', textAlign: 'center' }}>TU-K BI System</h2>
-        <nav>
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {[
-              { id: 'dashboard', label: '📊 Dashboard' },
-              { id: 'documents', label: '📁 My Documents' },
-              { id: 'statistics', label: '📈 Statistics' },
-              { id: 'settings', label: '⚙️ Settings' }
-            ].map((item) => (
-              <li 
-                key={item.id} 
-                onClick={() => setActiveTab(item.id)}
-                style={{
-                  padding: '12px 15px',
-                  marginBottom: '10px',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  backgroundColor: activeTab === item.id ? '#3498db' : 'transparent',
-                  transition: '0.3s'
-                }}
-              >
-                {item.label}
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </div>
-
-      {/* MAIN CONTENT AREA */}
-      <main style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
+      <header className="bg-white shadow-sm px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+        <h1 className="text-xl font-bold text-emerald-600 flex items-center gap-2 cursor-pointer" onClick={() => setView('dashboard')}>
+          <BrainCircuit className="w-6 h-6" />
+          Intelligent Mapping System
+        </h1>
         
-        {/* Top Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-          <h1 style={{ margin: 0, color: '#2c3e50' }}>{activeTab.toUpperCase()}</h1>
-          <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-            Logout
-          </button>
-        </div>
-
-        {activeTab === 'dashboard' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {user && (
+          <div className="relative">
+            <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 hover:bg-slate-100 rounded-md transition-colors">
+              {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
             
-            <div style={{ textAlign: 'center', backgroundColor: '#f0fdf4', border: '2px dashed #2ecc71', padding: '25px', borderRadius: '12px' }}>
-              <h2>Synthesize Your Portfolio</h2>
-              <p>Combine all your uploaded coursework into one ultimate Master Profile.</p>
-              <button 
-                onClick={generateMasterProfile} 
-                disabled={isSynthesizing}
-                style={{ padding: '12px 25px', background: '#2ecc71', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                {isSynthesizing ? '🧠 Synthesizing Database...' : '✨ Generate Master Profile'}
-              </button>
-            </div>
-
-            <div style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-              <h3>Generate New Analysis</h3>
-              <div style={{ display: 'flex', gap: '15px', marginTop: '15px' }}>
-                <input type="text" name="name" placeholder="Full Name" value={surveyData.name} onChange={handleInputChange} style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }} />
-                <input type="text" name="major" placeholder="Major" value={surveyData.major} onChange={handleInputChange} style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }} />
-              </div>
-              <input type="file" multiple onChange={handleFileChange} style={{ marginTop: '15px' }} />
-              <button onClick={handleUpload} disabled={loading} style={{ marginTop: '15px', width: '100%', padding: '12px', background: '#3498db', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                {loading ? '🤖 Analyzing Portfolio...' : 'Generate Profile Dashboard'}
-              </button>
-            </div>
-
-            {masterProfile && (
-              <div style={{ marginTop: '20px', borderTop: '5px solid #3498db', background: '#fff', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
-                <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-                  <h1 style={{ color: '#2c3e50', margin: '0' }}>{masterProfile.professional_title}</h1>
-                  <p style={{ color: '#7f8c8d', fontSize: '18px', maxWidth: '800px', margin: '15px auto' }}>{masterProfile.bio}</p>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
-                  <div>
-                    <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>Categorized Skills</h3>
-                    <div style={{ display: 'flex', gap: '20px' }}>
-                      <div style={{ flex: 1 }}>
-                        <h4 style={{ color: '#27ae60' }}>Technical</h4>
-                        <ul>{masterProfile.skills?.technical?.map((s, i) => <li key={i}>{s}</li>)}</ul>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <h4 style={{ color: '#e67e22' }}>Soft Skills</h4>
-                        <ul>{masterProfile.skills?.soft?.map((s, i) => <li key={i}>{s}</li>)}</ul>
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>Service Match Probability</h3>
-                    <div style={{ width: '100%', height: 300 }}>
-                      <ResponsiveContainer>
-                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={masterProfile.services}>
-                          <PolarGrid />
-                          <PolarAngleAxis dataKey="service_name" />
-                          <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                          <Radar name="Match %" dataKey="match_percentage" stroke="#3498db" fill="#3498db" fillOpacity={0.6} />
-                          <Tooltip />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {profile && !masterProfile && (
-              <div id="student-profile-report" style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-                <h2>{surveyData.name || 'Your'} Result</h2>
-                <p><i>"{profile.bio}"</i></p>
-                <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
-                  <div style={{ flex: 1 }}>
-                    <h3>Skills</h3>
-                    <p><strong>Technical:</strong> {profile.acquired_skills?.join(', ')}</p>
-                    <p><strong>Soft:</strong> {profile.soft_skills?.join(', ')}</p>
-                  </div>
-                </div>
-                <AnalyticsDashboard analyticsData={analyticsData} />
-                <button onClick={downloadPDF} style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: '#27ae60', color: '#fff', border: 'none', borderRadius: '5px' }}>
-                  📥 Download as PDF
+            {menuOpen && (
+              <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <button onClick={() => {setView('dashboard'); setMenuOpen(false);}} className="w-full text-left px-4 py-2 hover:bg-emerald-50 text-sm flex items-center gap-2">
+                  <LayoutDashboard className="w-4 h-4" /> My Dashboard
+                </button>
+                <button onClick={() => {setView('onboarding'); setMenuOpen(false);}} className="w-full text-left px-4 py-2 hover:bg-emerald-50 text-sm flex items-center gap-2">
+                  <UploadCloud className="w-4 h-4" /> Upload New
+                </button>
+                {userHistory.length >= 2 && (
+                  <button onClick={generateMaster} className="w-full text-left px-4 py-2 hover:bg-purple-50 text-purple-700 text-sm flex items-center gap-2">
+                    <BrainCircuit className="w-4 h-4" /> Generate Master Profile
+                  </button>
+                )}
+                <hr className="my-1 border-slate-100" />
+                <button onClick={handleLogout} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 text-sm flex items-center gap-2">
+                  <LogOut className="w-4 h-4" /> Sign Out
                 </button>
               </div>
             )}
           </div>
         )}
+      </header>
 
-        {activeTab === 'documents' && <DocumentsView history={userHistory} />}
-        {activeTab === 'statistics' && <StatisticsView history={userHistory} />}
-        {activeTab === 'settings' && <SettingsView user={user} />}
-
+      <main className="container mx-auto px-4 py-8 max-w-6xl">
+        {view === 'landing' && <LandingView onLogin={handleLogin} />}
+        {view === 'onboarding' && <OnboardingView user={user} onUpload={handleFileUpload} isUploading={loading} />}
+        {view === 'processing' && <ProcessingView />}
+        {view === 'dashboard' && (
+          <DashboardView 
+            user={user} 
+            profile={profile} 
+            masterProfile={masterProfile} 
+            analyticsData={analyticsData} 
+            onDownload={downloadPDF}
+          />
+        )}
       </main>
     </div>
   );
