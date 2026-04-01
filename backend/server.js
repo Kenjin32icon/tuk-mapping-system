@@ -33,7 +33,7 @@ const storage = multer.diskStorage({
     }
 });
 
-// UPGRADE: Changed from upload.single to upload.array (max 5 files)
+// UPGRADE: Note the change to upload.array('documents', 5) to allow up to 5 files at once
 const upload = multer({ storage: storage });
 
 // ============================================================================
@@ -43,13 +43,12 @@ mongoose.connect('mongodb://localhost:27017/tuk-mapping')
   .then(() => console.log('✅ Connected to MongoDB successfully!'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// UPGRADE: Added fields for Google Metadata and multiple document tracking
 const ProfileSchema = new mongoose.Schema({
     userId: { type: String, required: true },      
     userEmail: { type: String, required: true },
     userName: { type: String },                    
     userPicture: { type: String },                 
-    documentsAnalyzed: [{ type: String }],         // Array of original filenames
+    documentsAnalyzed: [{ type: String }],         
     generatedProfile: { type: Object, required: true }, 
     createdAt: { type: Date, default: Date.now }
 });
@@ -60,30 +59,30 @@ const Profile = mongoose.model('Profile', ProfileSchema);
 // 3. MAIN ROUTE: MULTI-DOCUMENT ANALYSIS & METADATA CAPTURE
 // ============================================================================
 app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => {
-    console.log('--- Received Multi-Document Analysis Request ---');
+    console.log(`--- Received ${req.files ? req.files.length : 0} Documents for Analysis ---`);
     
     if (!req.files || req.files.length === 0) {
         return res.status(400).send('No documents uploaded.');
     }
 
     try {
-        // 1. Parse Metadata (User Info) sent from the frontend
-        // Note: Ensure your frontend appends 'metadata' as a stringified JSON in the FormData
+        // 1. Parse metadata sent from React
         const metadata = JSON.parse(req.body.metadata || '{}');
         const userId = metadata.uid || 'anonymous';
         const userEmail = metadata.email || 'unknown@example.com';
-        const userName = metadata.displayName || 'TU-K Student';
+        const userName = metadata.displayName || 'User';
         const userPicture = metadata.photoURL || '';
-
-        // 2. Concatenation Logic: Loop through all uploaded files
+        
         let combinedText = "";
         const processedFileNames = [];
 
+        // 2. LOOP: Go through every uploaded file and extract the text
         for (const file of req.files) {
             processedFileNames.push(file.originalname);
             const filePath = file.path;
             let extractedText = "";
 
+            // Check file type and parse accordingly
             if (file.mimetype === 'application/pdf') {
                 const dataBuffer = fs.readFileSync(filePath);
                 const pdfData = await pdfParse(dataBuffer);
@@ -93,23 +92,23 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
                 extractedText = docxData.value;
             } else {
                 console.warn(`Unsupported file type skipped: ${file.originalname}`);
-                // Clean up unsupported file
-                fs.unlinkSync(filePath);
-                continue;
+                // Clean up unsupported file to save space
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                continue; 
             }
 
-            // Append with a clear delimiter for the AI
+            // Combine the text with clear markers for the AI
             combinedText += `\n\n--- START OF DOCUMENT: ${file.originalname} ---\n`;
             combinedText += extractedText;
             combinedText += `\n--- END OF DOCUMENT: ${file.originalname} ---\n`;
 
-            // Optional: Remove file after text extraction to save space
-            fs.unlinkSync(filePath);
+            // Clean up file after text extraction
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
         }
 
-        console.log(`Successfully extracted text from ${processedFileNames.length} documents.`);
+        console.log(`Successfully extracted a total of ${combinedText.length} characters.`);
 
-        // 3. AI Prompt Construction
+        // 3. Feed the massive combined text to Llama 3.2
         const aiPrompt = `
         You are an expert career advisor mapping university coursework to the job market.
         Analyze the following combined text from multiple student documents. 
@@ -117,12 +116,12 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
         Extract the academic focus, technical skills, and soft skills. Then, suggest 2-3 marketable freelance or professional services the student can offer.
         
         Combined Document Text:
-        """${combinedText.substring(0, 12000)}""" 
+        """${combinedText.substring(0, 15000)}""" // Safeguard against memory overload
         
         Strictly return the result as a JSON object matching this structure:
         {
           "bio": "A brief summary of their academic focus based on the documents",
-          "acquired_skills": ["Skill 1", "Skill 2", "Skill 3"],
+          "acquired_skills": ["Skill 1", "Skill 2"],
           "soft_skills": ["Skill A", "Skill B"],
           "marketable_services": [
             { "service_name": "Name", "description": "How they provide value" }
@@ -132,18 +131,17 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
         OUTPUT ONLY VALID JSON.
         `;
 
-        // 4. Call Llama 3.2 via Ollama
         const response = await axios.post('http://localhost:11434/api/generate', {
             model: 'llama3.2:1b',
             prompt: aiPrompt,
             stream: false,
             options: { 
                 temperature: 0.3, 
-                num_ctx: 4096 // Increased context for multiple docs
+                num_ctx: 4096 // Expanded context window for multiple files
             }
         });
 
-        // 5. Auto-Heal JSON & Save to Database
+        // 4. Heal JSON, save to MongoDB, and return to React
         const repairedJson = jsonrepair(response.data.response);
         const generatedProfile = JSON.parse(repairedJson);
 
@@ -158,11 +156,11 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
 
         await newProfile.save();
         console.log('✅ Multi-document profile saved to database.');
-
+        
         res.json(generatedProfile);
 
     } catch (error) {
-        console.error('❌ Analysis Error:', error.message);
+        console.error('❌ Pipeline Error:', error.message);
         res.status(500).send('Error analyzing documents.');
     }
 });
@@ -171,12 +169,8 @@ app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => 
 app.get('/api/user-history/:userId', async (req, res) => {
     try {
         const userHistory = await Profile.find({ userId: req.params.userId }).sort({ createdAt: -1 });
-        res.json({ 
-            count: userHistory.length, 
-            history: userHistory 
-        });
+        res.json({ count: userHistory.length, history: userHistory });
     } catch (error) {
-        console.error('❌ History Fetch Error:', error.message);
         res.status(500).send('An error occurred while fetching history.');
     }
 });
@@ -213,7 +207,7 @@ app.post('/api/synthesize-profile', async (req, res) => {
 });
 
 // ============================================================================
-// 5. START THE SERVER
+// 4. START THE SERVER
 // ============================================================================
 const PORT = 5000;
 app.listen(PORT, () => {

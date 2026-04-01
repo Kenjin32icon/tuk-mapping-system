@@ -236,7 +236,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [userHistory, setUserHistory] = useState([]);
   
-  // 1. Updated state to handle an array of files
+  // 1. Array of files
   const [files, setFiles] = useState([]);
 
   useEffect(() => {
@@ -277,13 +277,12 @@ function App() {
     setMenuOpen(false);
   };
 
-  // 2. Updated file selection handler
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
     setFiles(selectedFiles);
   };
 
-  // 3. Updated upload function to loop through files
+  // --- UPDATED UPLOAD LOGIC ---
   const handleProcessDocuments = async () => {
     if (files.length === 0 || !user) {
       return alert("Please log in and select at least one document!");
@@ -295,7 +294,7 @@ function App() {
     try {
       const formData = new FormData();
       
-      // LOOP: Append EACH file to the form data under the name 'documents'
+      // ✅ CORRECT: Appending each file under the key 'documents' (plural)
       files.forEach((file) => {
         formData.append('documents', file); 
       });
@@ -316,7 +315,7 @@ function App() {
       
       setProfile(response.data);
       setView('dashboard');
-      setFiles([]); // Clear files after successful processing
+      setFiles([]); 
     } catch (error) {
       console.error("Multi-Document Pipeline Error:", error);
       alert("Something went wrong analyzing the documents.");
