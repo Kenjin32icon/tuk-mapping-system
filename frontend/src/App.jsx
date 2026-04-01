@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import html2pdf from 'html2pdf.js';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-// Cleaned up imports: removed storage and firebase/storage functions
 import { auth, googleProvider } from './firebase'; 
 
-// Recharts imports for visualization
+// Recharts imports
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis 
@@ -144,44 +143,54 @@ function AnalyticsDashboard({ analyticsData }) {
 // --- MAIN APP COMPONENT ---
 function App() {
   const [user, setUser] = useState(null);
-  const [file, setFile] = useState(null); 
+  const [files, setFiles] = useState([]); // Renamed from 'file' for multi-upload consistency
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(null);
   
+  // NEW STATES FOR PHASE 1
   const [activeTab, setActiveTab] = useState('dashboard');
   const [userHistory, setUserHistory] = useState([]);
   const [masterProfile, setMasterProfile] = useState(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [isAppLoading, setIsAppLoading] = useState(true);
+  const [isAppLoading, setIsAppLoading] = useState(true); // Prevents UI flickering
 
   const [surveyData, setSurveyData] = useState({ name: '', major: '', career_goal: '' });
 
-  // --- PERSISTENT DASHBOARD LOGIC ---
+  // --- PHASE 1: PERSISTENT DASHBOARD LOGIC ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       
       if (currentUser) {
+        // 1. If user logs in, fetch their history immediately
         try {
           const response = await axios.get(`http://localhost:5000/api/user-history/${currentUser.uid}`);
           const history = response.data.history;
+          
           setUserHistory(history);
 
+          // 2. If they have past documents, automatically load the most recent one into the dashboard!
           if (history.length > 0) {
             setProfile(history[0].generatedProfile);
+            
+            // 3. Fetch their aggregated analytics to populate the charts
+            // Note: Ensure your backend has this /api/analytics endpoint or uses the logic from analyze-data
+            const analyticsResponse = await axios.get(`http://localhost:5000/api/user-history/${currentUser.uid}`);
+            // Logic for extracting analytics from history if a dedicated endpoint isn't ready:
             if(history[0].analyticsData) setAnalyticsData(history[0].analyticsData);
           }
         } catch (error) {
           console.error("Error fetching persistent data:", error);
         }
       } else {
+        // Reset states if they log out
         setProfile(null);
         setAnalyticsData(null);
         setUserHistory([]);
         setMasterProfile(null);
       }
-      setIsAppLoading(false);
+      setIsAppLoading(false); // Done loading initial state
     });
 
     return () => unsubscribe();
@@ -201,43 +210,37 @@ function App() {
   };
 
   const handleFileChange = (e) => {
-    setFile(e.target.files[0]); 
+    setFiles(Array.from(e.target.files));
   };
 
-  // --- SIMPLIFIED: handleUpload using direct backend disk storage ---
   const handleUpload = async () => {
-    if (!file || !user) return alert("Please log in and select a file!");
-    setLoading(true);
-    
-    try {
-      // Prepare data for the Backend AI Pipeline
-      const formData = new FormData();
-      formData.append('documents', file); // Multer will intercept this and save it to disk!
-      
-      const dummySurvey = { name: user.displayName, email: user.email, major: "Information Science" };
-      formData.append('survey', JSON.stringify(dummySurvey));
-      
-      // Pass the user's ID and Email securely
-      formData.append('userId', user.uid);
-      formData.append('userEmail', user.email);
+    if (files.length === 0) return alert("Please upload at least one document.");
+    if (!surveyData.name || !surveyData.major) return alert("Name and Major are required.");
 
-      // Send directly to Node.js Backend
-      console.log("Sending to AI for analysis & local storage...");
+    setLoading(true);
+    setProfile(null); 
+    setAnalyticsData(null); 
+
+    const formData = new FormData();
+    files.forEach((file) => formData.append('documents', file));
+    formData.append('survey', JSON.stringify(surveyData));
+    formData.append('userId', user.uid);
+    formData.append('userEmail', user.email);
+
+    try {
       const response = await axios.post('http://localhost:5000/api/analyze-data', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      
-      setProfile(response.data.generatedProfile);
-      if (response.data.analyticsData) {
+      setProfile(response.data);
+      if (response.data?.analyticsData) {
         setAnalyticsData(response.data.analyticsData);
       }
-      
-      // Switch back to dashboard view
-      setActiveTab('dashboard'); 
-      
+      // Refresh history after new upload
+      const histRes = await axios.get(`http://localhost:5000/api/user-history/${user.uid}`);
+      setUserHistory(histRes.data.history);
     } catch (error) {
-      console.error("Pipeline Error:", error);
-      alert("Something went wrong analyzing the document.");
+      console.error("Error generating profile", error);
+      alert("Something went wrong!");
     }
     setLoading(false);
   };
@@ -263,7 +266,7 @@ function App() {
     const element = document.getElementById('student-profile-report');
     const opt = {
       margin: 10,
-      filename: `${surveyData.name || 'Your'}_Career_Mapping.pdf`,
+      filename: `${surveyData.name}_Career_Mapping.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -352,7 +355,7 @@ function App() {
                 <input type="text" name="name" placeholder="Full Name" value={surveyData.name} onChange={handleInputChange} style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }} />
                 <input type="text" name="major" placeholder="Major" value={surveyData.major} onChange={handleInputChange} style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }} />
               </div>
-              <input type="file" onChange={handleFileChange} style={{ marginTop: '15px' }} />
+              <input type="file" multiple onChange={handleFileChange} style={{ marginTop: '15px' }} />
               <button onClick={handleUpload} disabled={loading} style={{ marginTop: '15px', width: '100%', padding: '12px', background: '#3498db', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
                 {loading ? '🤖 Analyzing Portfolio...' : 'Generate Profile Dashboard'}
               </button>
