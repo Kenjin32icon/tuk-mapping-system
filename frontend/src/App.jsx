@@ -83,19 +83,13 @@ function LandingView({ onLogin }) {
 }
 
 // --- VIEW 2: ONBOARDING & UPLOAD ---
-function OnboardingView({ user, onUpload, isUploading }) {
-  const [selectedFile, setSelectedFile] = useState(null);
-
-  const handleInternalUpload = () => {
-    if (selectedFile) onUpload(selectedFile);
-  };
-
+function OnboardingView({ user, onProcess, isUploading, files, onFileChange }) {
   return (
     <div className="max-w-3xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
         <h2 className="text-2xl font-bold mb-4">Welcome, {user?.displayName.split(' ')[0]}!</h2>
         <p className="text-slate-600 mb-6 leading-relaxed">
-          Simply upload your university materials below. Our AI engine will extract the core technical and soft skills you have demonstrated.
+          Simply upload your university materials below. You can select multiple documents at once (e.g., projects, essays, abstracts).
         </p>
         
         <div 
@@ -104,25 +98,32 @@ function OnboardingView({ user, onUpload, isUploading }) {
         >
           <UploadCloud className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-emerald-800 mb-2">
-            {selectedFile ? selectedFile.name : "Select your coursework or project"}
+            {files.length > 0 ? `${files.length} documents selected` : "Select or drop multiple documents here"}
           </h3>
           <p className="text-sm text-emerald-600 mb-6">Supports PDF and Word Documents (.docx)</p>
           
           <input 
             type="file" 
+            multiple 
+            onChange={onFileChange} 
             className="hidden" 
             id="file-upload" 
-            onChange={(e) => setSelectedFile(e.target.files[0])}
           />
           <span className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-medium shadow-md">
             Browse Files
           </span>
         </div>
 
+        {files.length > 0 && (
+          <ul className="mt-4 text-sm text-slate-500 space-y-1">
+            {files.map((f, i) => <li key={i} className="flex items-center gap-2"><FileText className="w-4 h-4"/> {f.name}</li>)}
+          </ul>
+        )}
+
         <div className="mt-8 flex justify-end">
           <button 
-            onClick={handleInternalUpload}
-            disabled={!selectedFile || isUploading}
+            onClick={onProcess}
+            disabled={files.length === 0 || isUploading}
             className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white px-8 py-3 rounded-lg font-semibold transition-colors"
           >
             {isUploading ? 'Uploading...' : 'Analyse My Documents →'}
@@ -180,7 +181,7 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
               <Settings className="w-5 h-5 text-blue-500" /> Technical Skills
             </h3>
             <div className="flex flex-wrap gap-2">
-              {(currentProfile?.skills?.technical || currentProfile?.acquired_skills || ['Analysis']).map((s, i) => (
+              {(currentProfile?.acquired_skills || ['Analysis']).map((s, i) => (
                 <span key={i} className="px-3 py-1 bg-slate-100 text-slate-700 rounded-lg text-sm">{s}</span>
               ))}
             </div>
@@ -190,7 +191,7 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
               <BrainCircuit className="w-5 h-5 text-emerald-500" /> Soft Skills
             </h3>
             <div className="flex flex-wrap gap-2">
-              {(currentProfile?.skills?.soft || currentProfile?.soft_skills || ['Communication']).map((s, i) => (
+              {(currentProfile?.soft_skills || ['Communication']).map((s, i) => (
                 <span key={i} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-sm">{s}</span>
               ))}
             </div>
@@ -203,7 +204,7 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
             <TrendingUp className="w-5 h-5 text-purple-500" /> Marketable Services
           </h3>
           <div className="space-y-4">
-            {(currentProfile?.services || currentProfile?.marketable_services || []).map((service, i) => (
+            {(currentProfile?.marketable_services || []).map((service, i) => (
               <div key={i} className="p-4 bg-slate-50 border border-slate-100 rounded-xl border-l-4 border-l-blue-500">
                 <h4 className="font-semibold text-slate-800">{service.service_name}</h4>
                 <p className="text-sm text-slate-600 mt-1">{service.description}</p>
@@ -234,6 +235,9 @@ function App() {
   const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [userHistory, setUserHistory] = useState([]);
+  
+  // 1. Updated state to handle an array of files
+  const [files, setFiles] = useState([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -273,22 +277,49 @@ function App() {
     setMenuOpen(false);
   };
 
-  const handleFileUpload = async (file) => {
+  // 2. Updated file selection handler
+  const handleFileChange = (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    setFiles(selectedFiles);
+  };
+
+  // 3. Updated upload function to loop through files
+  const handleProcessDocuments = async () => {
+    if (files.length === 0 || !user) {
+      return alert("Please log in and select at least one document!");
+    }
+    
     setLoading(true);
     setView('processing');
+    
     try {
       const formData = new FormData();
-      formData.append('documents', file);
-      formData.append('survey', JSON.stringify({ name: user.displayName, major: "Informatics" }));
-      formData.append('userId', user.uid);
-      formData.append('userEmail', user.email);
+      
+      // LOOP: Append EACH file to the form data under the name 'documents'
+      files.forEach((file) => {
+        formData.append('documents', file); 
+      });
+      
+      // Attach Google User Metadata
+      const userMetadata = {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        photoURL: user.photoURL
+      };
+      formData.append('metadata', JSON.stringify(userMetadata));
 
-      const response = await axios.post('http://localhost:5000/api/analyze-data', formData);
+      // Send to backend
+      const response = await axios.post('http://localhost:5000/api/analyze-data', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
       setProfile(response.data);
-      setAnalyticsData(response.data.analyticsData);
       setView('dashboard');
-    } catch (e) { 
-      alert("Analysis failed."); 
+      setFiles([]); // Clear files after successful processing
+    } catch (error) {
+      console.error("Multi-Document Pipeline Error:", error);
+      alert("Something went wrong analyzing the documents.");
       setView('onboarding');
     }
     setLoading(false);
@@ -349,7 +380,15 @@ function App() {
 
       <main className="container mx-auto px-4 py-8 max-w-6xl">
         {view === 'landing' && <LandingView onLogin={handleLogin} />}
-        {view === 'onboarding' && <OnboardingView user={user} onUpload={handleFileUpload} isUploading={loading} />}
+        {view === 'onboarding' && (
+          <OnboardingView 
+            user={user} 
+            onProcess={handleProcessDocuments} 
+            isUploading={loading} 
+            files={files} 
+            onFileChange={handleFileChange} 
+          />
+        )}
         {view === 'processing' && <ProcessingView />}
         {view === 'dashboard' && (
           <DashboardView 
