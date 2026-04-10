@@ -1,130 +1,117 @@
 import React from 'react';
 import SkillList from './SkillList';
-import { AlertCircle, Download, Briefcase, TrendingUp, BrainCircuit } from 'lucide-react';
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { Download, BrainCircuit, TrendingUp, Target, Activity } from 'lucide-react';
+import { 
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell
+} from 'recharts';
 
 export default function DashboardView({ user, profile, masterProfile, onDownload, onGenerateMaster, isSynthesizing }) {
   const activeProfile = masterProfile || profile;
 
-  // Data for the radar chart
+  // Radar Data (Skill Competency)
   const radarData = (activeProfile?.skills?.technical || []).slice(0, 6).map((skill) => ({
-    subject: skill.length > 10 ? skill.substring(0, 10) + '...' : skill,
-    A: 75 + (Math.random() * 20),
+    subject: skill.length > 12 ? skill.substring(0, 12) + '...' : skill,
+    A: 60 + (Math.random() * 35),
     fullMark: 100,
   }));
 
+  // Bar Data (Sector Demand from the new prompt)
+  const sectorData = activeProfile?.sector_demand || [
+    { sector: "General Tech", demand_percentage: 50 }
+  ];
+
+  const COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b'];
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500" id="master-dashboard-export">
+    <div className="flex flex-col space-y-8 animate-in fade-in duration-500 max-w-4xl mx-auto" id="master-dashboard-export">
       
-      {/* UPDATED: ONBOARDING ALERT WITH CTA */}
-      {!masterProfile && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 p-5 rounded-xl flex flex-col sm:flex-row items-center justify-between shadow-sm gap-4">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-6 h-6 text-amber-600 flex-shrink-0" />
-            <p className="text-sm font-medium">
-              You haven't generated a <b>Master Profile</b> yet. Analyze all your past documents to unlock deep sector analysis.
-            </p>
+      {/* 1. PERSISTENT MASTER PROFILE ACTION BAR */}
+      <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center border-2 border-emerald-500 overflow-hidden">
+            <img src={user?.photoURL} alt="Profile" crossOrigin="anonymous" className="w-full h-full object-cover" />
           </div>
+          <div>
+            <h2 className="text-2xl font-bold">{user?.displayName}</h2>
+            <p className="text-emerald-400 font-medium">{activeProfile?.recommended_role?.title || 'Profile Under Analysis'}</p>
+          </div>
+        </div>
+        
+        <div className="flex gap-3 w-full md:w-auto">
+          {/* Always Visible Generate/Update Button */}
           <button 
             onClick={onGenerateMaster}
             disabled={isSynthesizing}
-            className="w-full sm:w-auto px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+            className="flex-1 md:flex-none px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
           >
-            <BrainCircuit className="w-4 h-4" /> 
-            {isSynthesizing ? 'Synthesizing...' : 'Generate Master Profile'}
+            <BrainCircuit className="w-5 h-5" /> 
+            {isSynthesizing ? 'Synthesizing...' : (masterProfile ? 'Update Master Profile' : 'Generate Master Profile')}
+          </button>
+          
+          <button onClick={onDownload} className="p-3 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl transition-colors">
+            <Download className="w-5 h-5" />
           </button>
         </div>
-      )}
-
-      {/* HEADER & EXPORT */}
-      <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100 gap-4">
-        <div className="flex items-center gap-4">
-          <img 
-            src={user?.photoURL} 
-            alt="Profile" 
-            crossOrigin="anonymous" 
-            className="w-16 h-16 rounded-full border-4 border-emerald-50 shadow-sm" 
-          />
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">{user?.displayName}</h2>
-            <p className="text-emerald-600 font-semibold">{activeProfile?.recommended_role?.title || 'Analysing Role...'}</p>
-          </div>
-        </div>
-        <button 
-          onClick={onDownload} 
-          className="w-full md:w-auto bg-slate-900 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-800 transition-all font-bold text-sm shadow-md"
-        >
-          <Download className="w-4 h-4" /> Export Professional PDF
-        </button>
       </div>
 
-      {/* CSS GRID: MASTER LAYOUT */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* 2. BIO & NARRATIVE MODULE */}
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+        <h3 className="text-lg font-bold text-slate-800 mb-3 uppercase tracking-wider text-sm flex items-center gap-2">
+           <Activity className="w-5 h-5 text-blue-500"/> Professional Summary
+        </h3>
+        <p className="text-slate-600 text-lg leading-relaxed">{activeProfile?.bio || "Upload more documents to generate a bio."}</p>
+      </div>
+
+      {/* 3. VISUALIZATION MODULE (Side-by-Side Charts) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         
-        {/* Left Column: Bio & Skills */}
-        <div className="md:col-span-1 space-y-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-sm uppercase">
-               Professional Bio
-            </h3>
-            <p className="text-slate-600 text-sm leading-relaxed">{activeProfile?.bio}</p>
+        {/* Radar Chart */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-80 flex flex-col">
+          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase">
+             <Target className="w-4 h-4 text-emerald-500" /> Competency Spread
+          </h3>
+          <div className="flex-1 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                  <PolarGrid stroke="#e2e8f0" />
+                  <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 11, fontWeight: 'bold' }} />
+                  <Radar name="Proficiency" dataKey="A" stroke="#10b981" fill="#10b981" fillOpacity={0.6} />
+                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+                </RadarChart>
+              </ResponsiveContainer>
           </div>
-          
-          <SkillList title="Technical Expertise" skills={activeProfile?.skills?.technical} />
-          <SkillList title="Core Soft Skills" skills={activeProfile?.skills?.soft} />
         </div>
 
-        {/* Right Column: Market Analysis & Stats */}
-        <div className="md:col-span-2 space-y-6">
-          
-          {/* KENYAN MARKET ALIGNMENT MODULE */}
-          <div className="bg-slate-900 p-8 rounded-2xl text-white shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-                <Briefcase className="w-24 h-24" />
-            </div>
-            <div className="relative z-10">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h3 className="text-emerald-400 font-bold text-sm uppercase tracking-widest mb-1">Market Focus</h3>
-                    <p className="text-2xl font-extrabold">{activeProfile?.kenyan_market_alignment?.best_skill_area_expertise}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-slate-400 text-xs font-bold uppercase mb-1">Potentiality Score</p>
-                    <p className="text-4xl font-black text-emerald-400">{activeProfile?.kenyan_market_alignment?.service_potentiality_score}%</p>
-                  </div>
-                </div>
-                <div className="bg-white/5 p-4 rounded-xl border border-white/10 backdrop-blur-md">
-                  <p className="text-slate-200 text-sm leading-relaxed italic">"{activeProfile?.kenyan_market_alignment?.description}"</p>
-                </div>
-            </div>
+        {/* Bar Chart: Sector Demand */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-80 flex flex-col">
+          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase">
+             <TrendingUp className="w-4 h-4 text-blue-500" /> Kenyan Sector Demand
+          </h3>
+          <div className="flex-1 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={sectorData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" domain={[0, 100]} hide />
+                <YAxis dataKey="sector" type="category" tick={{ fill: '#475569', fontSize: 12, fontWeight: 'bold' }} width={90} axisLine={false} tickLine={false} />
+                <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+                <Bar dataKey="demand_percentage" radius={[0, 8, 8, 0]} barSize={24}>
+                  {sectorData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-
-          {/* STATISTICS DASHBOARD */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2 text-sm uppercase">
-               <TrendingUp className="w-4 h-4 text-emerald-500" /> Skill Competency Mapping
-            </h3>
-            <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-                    <PolarGrid stroke="#e2e8f0" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                    <Radar
-                      name="Proficiency"
-                      dataKey="A"
-                      stroke="#10b981"
-                      fill="#10b981"
-                      fillOpacity={0.6}
-                    />
-                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
-                  </RadarChart>
-                </ResponsiveContainer>
-            </div>
-          </div>
-
         </div>
       </div>
+
+      {/* 4. VERTICAL SKILLS MODULE */}
+      <div className="space-y-6">
+        <SkillList title="Core Technical Expertise" skills={activeProfile?.skills?.technical} />
+        <SkillList title="Transferable & Soft Skills" skills={[...(activeProfile?.skills?.soft || []), ...(activeProfile?.skills?.transferable || [])]} />
+      </div>
+
     </div>
   );
 }

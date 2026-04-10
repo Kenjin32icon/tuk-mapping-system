@@ -83,7 +83,7 @@ const ProfileSchema = new mongoose.Schema({
 
 const Profile = mongoose.model('Profile', ProfileSchema);
 
-// Route: Analyze Documents (UPDATED PROMPT)
+// Route: Analyze Documents
 app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).send('No documents.');
 
@@ -101,7 +101,6 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
             combinedText += `\n--- DOC: ${file.originalname} ---\n${text}`;
         }
 
-        // UPDATED: Kenyan Market Cross-Matching & Service Potentiality Prompt
         const aiPrompt = `
 You are an expert tech recruiter and career strategist based in Nairobi, Kenya.
 Analyze the following coursework and extract the student's profile.
@@ -173,25 +172,66 @@ app.get('/api/user-history', verifyAuth, async (req, res) => {
     } catch (e) { res.status(500).send('History error.'); }
 });
 
-// Route: Synthesize Profile 
+// Route: Synthesize Profile (UPDATED: Advanced Kenyan Market Integration)
 app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     try {
         const history = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
         if (history.length < 2) return res.status(400).send("Need 2+ documents.");
 
         const pastProfiles = history.map(doc => doc.generatedProfile);
-        const synthesisPrompt = `Synthesize these analyses into ONE master JSON profile matching the input structure: ${JSON.stringify(pastProfiles)}`;
+        
+        const synthesisPrompt = `
+        You are an elite Career Strategist and Data Analyst operating in Nairobi, Kenya (The Silicon Savannah).
+        Your task is to comprehensively analyze the following array of academic and professional documents from a student, synthesize them, and creatively curate their professional identity.
+
+        Deeply cross-match their aggregated skills against the current Kenyan job market (e.g., Safaricom ecosystem, local NGOs, FinTech startups like Flutterwave/Paystack, AgriTech, and E-Government).
+
+        Strictly output ONLY a valid JSON object matching this exact structure:
+        {
+          "bio": "A powerful 3-sentence professional summary.",
+          "skills": {
+            "technical": ["Curated Skill 1", "Curated Skill 2"],
+            "soft": ["Curated Skill 1", "Curated Skill 2"],
+            "transferable": ["Curated Skill 1", "Curated Skill 2"] 
+          },
+          "kenyan_market_alignment": {
+            "best_skill_area_expertise": "e.g., FinTech Data Infrastructure",
+            "description": "Deep analysis of how their skills fit into the Kenyan ecosystem.",
+            "service_potentiality_score": 85,
+            "market_readiness_score": 78,
+            "skill_scarcity_index": "High"
+          },
+          "sector_demand": [
+            { "sector": "FinTech", "demand_percentage": 90 },
+            { "sector": "AgriTech", "demand_percentage": 65 },
+            { "sector": "NGO / HealthTech", "demand_percentage": 75 }
+          ],
+          "recommended_role": {
+            "title": "e.g., Junior Cloud Architect",
+            "description": "What this role entails."
+          },
+          "marketable_services": [
+            { "service_name": "Service Name", "demand_score": 90, "description": "Value proposition" }
+          ]
+        }
+
+        Aggregated Student Data History: 
+        ${JSON.stringify(pastProfiles)}
+        `;
 
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: synthesisPrompt }],
             model: "llama-3.3-70b-versatile",
-            temperature: 0.3,
+            temperature: 0.4, // Slightly higher for more creative synthesis
             response_format: { type: "json_object" }
         });
 
         const masterProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
         res.json(masterProfile);
-    } catch (e) { res.status(500).send('Synthesis failed.'); }
+    } catch (e) { 
+        console.error('Synthesis Error:', e);
+        res.status(500).send('Synthesis failed.'); 
+    }
 });
 
 // AI Job Matching API
