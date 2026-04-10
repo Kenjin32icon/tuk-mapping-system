@@ -18,15 +18,15 @@ function App() {
   const [profile, setProfile] = useState(null);
   const [masterProfile, setMasterProfile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
 
-  // 1. Determine isAdmin status globally
+  // Determine isAdmin status globally
   const isAdmin = user?.email === 'kariukilewis04@students.tukenya.ac.ke';
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        // Use local check for immediate routing
         const isUserAdmin = currentUser.email === 'kariukilewis04@students.tukenya.ac.ke';
         setView(isUserAdmin ? 'admin_dashboard' : 'onboarding');
       } else {
@@ -46,6 +46,32 @@ function App() {
     setProfile(null);
     setMasterProfile(null);
     setView('landing');
+  };
+
+  // 1. Function to handle "Skip this step"
+  const handleSkipToDashboard = () => {
+    setView('dashboard');
+  };
+
+  // 2. Function to Generate Master Profile
+  const handleGenerateMasterProfile = async () => {
+    setIsSynthesizing(true);
+    setView('processing'); // Show loading screen
+    try {
+      const token = await user.getIdToken();
+      const response = await axios.post('http://localhost:5000/api/synthesize-profile', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setMasterProfile(response.data);
+      setView('dashboard'); // Route back to the now-populated Master Dashboard
+    } catch (error) {
+      console.error(error);
+      alert("Could not generate Master Profile. Make sure you have uploaded at least 2 documents in the past.");
+      setView('dashboard');
+    } finally {
+      setIsSynthesizing(false);
+    }
   };
 
   const handleProcessDocuments = async (e) => {
@@ -86,13 +112,14 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* 2. DYNAMIC NAVBAR */}
       <Navbar 
         user={user} 
         isAdmin={isAdmin} 
         view={view} 
         setView={setView} 
         handleLogout={handleLogout} 
+        masterProfile={masterProfile}
+        onGenerateMaster={handleGenerateMasterProfile} 
       />
 
       <main className="container mx-auto p-4 md:p-8 max-w-6xl">
@@ -103,6 +130,7 @@ function App() {
             user={user} 
             onFileChange={handleProcessDocuments} 
             isUploading={loading} 
+            onSkip={handleSkipToDashboard}
           />
         )}
 
@@ -112,7 +140,9 @@ function App() {
                 <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
                 <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
              </div>
-             <h3 className="text-2xl font-bold text-slate-900">AI is mapping your potential...</h3>
+             <h3 className="text-2xl font-bold text-slate-900">
+                {isSynthesizing ? 'Synthesizing Master Profile...' : 'AI is mapping your potential...'}
+             </h3>
           </div>
         )}
 
@@ -121,14 +151,19 @@ function App() {
             user={user} 
             profile={profile} 
             masterProfile={masterProfile} 
-            onDownload={downloadPDF} 
+            onDownload={downloadPDF}
+            onGenerateMaster={handleGenerateMasterProfile}
+            isSynthesizing={isSynthesizing} 
           />
         )}
 
         {view === 'admin_dashboard' && <AdminDashboardView />}
-
-        {/* 3. SETTINGS VIEW */}
         {view === 'settings' && <ProfileSettings user={user} isAdmin={isAdmin} />}
+
+        {/* NEW MODULE ROUTING (Create these components later) */}
+        {view === 'module_skills' && <div className="text-center p-10"><h2 className="text-2xl font-bold">Skills Module</h2><p className="text-slate-500">Component coming soon...</p></div>}
+        {view === 'module_market' && <div className="text-center p-10"><h2 className="text-2xl font-bold">Market Module</h2><p className="text-slate-500">Component coming soon...</p></div>}
+        {view === 'module_services' && <div className="text-center p-10"><h2 className="text-2xl font-bold">Services Module</h2><p className="text-slate-500">Component coming soon...</p></div>}
       </main>
     </div>
   );

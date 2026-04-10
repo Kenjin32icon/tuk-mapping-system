@@ -1,9 +1,9 @@
 import React from 'react';
 import SkillList from './SkillList';
-import { AlertCircle, Download, Briefcase, TrendingUp } from 'lucide-react';
+import { AlertCircle, Download, Briefcase, TrendingUp, BrainCircuit } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
 
-export default function DashboardView({ user, profile, masterProfile, onDownload }) {
+export default function DashboardView({ user, profile, masterProfile, onDownload, onGenerateMaster, isSynthesizing }) {
   const activeProfile = masterProfile || profile;
 
   // Data for the radar chart
@@ -16,13 +16,23 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
   return (
     <div className="space-y-6 animate-in fade-in duration-500" id="master-dashboard-export">
       
-      {/* ONBOARDING ALERT */}
+      {/* UPDATED: ONBOARDING ALERT WITH CTA */}
       {!masterProfile && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl flex items-center justify-between shadow-sm">
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 p-5 rounded-xl flex flex-col sm:flex-row items-center justify-between shadow-sm gap-4">
           <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600" />
-            <p className="text-sm font-medium">Generate your <b>Master Profile</b> by uploading more documents to unlock full sector analysis.</p>
+            <AlertCircle className="w-6 h-6 text-amber-600 flex-shrink-0" />
+            <p className="text-sm font-medium">
+              You haven't generated a <b>Master Profile</b> yet. Analyze all your past documents to unlock deep sector analysis.
+            </p>
           </div>
+          <button 
+            onClick={onGenerateMaster}
+            disabled={isSynthesizing}
+            className="w-full sm:w-auto px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+          >
+            <BrainCircuit className="w-4 h-4" /> 
+            {isSynthesizing ? 'Synthesizing...' : 'Generate Master Profile'}
+          </button>
         </div>
       )}
 

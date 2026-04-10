@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Menu, X, UploadCloud, LayoutDashboard, Settings, LogOut, Shield } from 'lucide-react';
+import { Menu, X, UploadCloud, LayoutDashboard, Settings, LogOut, Shield, BrainCircuit } from 'lucide-react';
 
-export default function Navbar({ user, isAdmin, view, setView, handleLogout }) {
+export default function Navbar({ user, isAdmin, view, setView, handleLogout, masterProfile, onGenerateMaster }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   if (!user) return null;
@@ -48,13 +48,39 @@ export default function Navbar({ user, isAdmin, view, setView, handleLogout }) {
                   <Shield className="w-4 h-4 text-emerald-600"/> Control Center
                 </button>
               ) : (
+                /* STUDENT LINKS */
                 <>
                   <button onClick={() => navigate('dashboard')} className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 text-sm font-medium text-slate-700">
-                    <LayoutDashboard className="w-4 h-4 text-emerald-600"/> Dashboard
+                    <LayoutDashboard className="w-4 h-4 text-emerald-600"/> Main Dashboard
                   </button>
                   <button onClick={() => navigate('onboarding')} className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 text-sm font-medium text-slate-700">
                     <UploadCloud className="w-4 h-4 text-emerald-500"/> Upload Documents
                   </button>
+                  
+                  <hr className="my-1 border-slate-100" />
+                  
+                  {/* DYNAMIC MASTER PROFILE / MODULE LINKS */}
+                  {masterProfile ? (
+                    <div className="bg-slate-50 py-1">
+                       <p className="px-4 py-1 text-xs font-bold text-slate-400 uppercase">Master Modules</p>
+                       <button onClick={() => navigate('module_skills')} className="w-full text-left px-4 py-2 hover:bg-emerald-100 flex items-center gap-3 text-sm font-medium text-slate-700">
+                         Skills Analysis
+                       </button>
+                       <button onClick={() => navigate('module_market')} className="w-full text-left px-4 py-2 hover:bg-emerald-100 flex items-center gap-3 text-sm font-medium text-slate-700">
+                         Market Alignment
+                       </button>
+                       <button onClick={() => navigate('module_services')} className="w-full text-left px-4 py-2 hover:bg-emerald-100 flex items-center gap-3 text-sm font-medium text-slate-700">
+                         Recommended Services
+                       </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => { setMenuOpen(false); onGenerateMaster(); }} 
+                      className="w-full text-left px-4 py-3 hover:bg-purple-50 flex items-center gap-3 text-sm font-bold text-purple-700"
+                    >
+                      <BrainCircuit className="w-4 h-4"/> Generate Master Profile
+                    </button>
+                  )}
                 </>
               )}
 
