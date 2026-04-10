@@ -11,6 +11,9 @@ import OnboardingView from './components/OnboardingView';
 import AdminDashboardView from './components/AdminDashboardView';
 import Navbar from './components/Navbar';
 import ProfileSettings from './components/ProfileSettings';
+import SkillsModuleView from './components/SkillsModuleView';
+import MarketModuleView from './components/MarketModuleView';
+import ServicesModuleView from './components/ServicesModuleView';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -160,10 +163,10 @@ function App() {
         {view === 'admin_dashboard' && <AdminDashboardView />}
         {view === 'settings' && <ProfileSettings user={user} isAdmin={isAdmin} />}
 
-        {/* NEW MODULE ROUTING (Create these components later) */}
-        {view === 'module_skills' && <div className="text-center p-10"><h2 className="text-2xl font-bold">Skills Module</h2><p className="text-slate-500">Component coming soon...</p></div>}
-        {view === 'module_market' && <div className="text-center p-10"><h2 className="text-2xl font-bold">Market Module</h2><p className="text-slate-500">Component coming soon...</p></div>}
-        {view === 'module_services' && <div className="text-center p-10"><h2 className="text-2xl font-bold">Services Module</h2><p className="text-slate-500">Component coming soon...</p></div>}
+{/* NEW MODULE ROUTING */}
+        {view === 'module_skills' && <SkillsModuleView masterProfile={masterProfile} />}
+        {view === 'module_market' && <MarketModuleView masterProfile={masterProfile} />}
+        {view === 'module_services' && <ServicesModuleView masterProfile={masterProfile} />}
       </main>
     </div>
   );
