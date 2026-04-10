@@ -1,3 +1,4 @@
+// server.js
 // ============================================================================
 // 1. IMPORTS & SYSTEM CONFIGURATION
 // ============================================================================
@@ -11,9 +12,21 @@ const cors = require('cors');
 const mongoose = require('mongoose');      
 const mammoth = require('mammoth');        
 const { jsonrepair } = require('jsonrepair'); 
+const admin = require('firebase-admin');     // NEW: Firebase Admin SDK
+const rateLimit = require('express-rate-limit'); // NEW: Rate Limiting
+
+// Initialize Firebase Admin (Replace with your actual service account path)
+// const serviceAccount = require("./path-to-your-service-account.json");
+// admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 
 const app = express();
-app.use(cors());
+
+// Updated CORS: Strict Origins
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:3000'], 
+    methods: ['GET', 'POST'],
+    credentials: true
+}));
 app.use(express.json()); 
 
 // Ensure the 'uploads' directory exists
@@ -22,32 +35,72 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
-// Configure Multer for local storage
+// ============================================================================
+// 2. MIDDLEWARE & UTILITIES
+// ============================================================================
+
+// NEW: Authentication Middleware
+const verifyAuth = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).send('Unauthorized: No token provided');
+    }
+    const token = authHeader.split(' ')[1];
+    try {
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        req.user = decodedToken; // Verified user attached to request
+        next();
+    } catch (error) {
+        return res.status(403).send('Unauthorized: Invalid token');
+    }
+};
+
+// NEW: Rate Limiting for AI Endpoints
+const aiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10, 
+    message: "Too many requests. Please try again in 15 minutes."
+});
+
+// UPGRADE: Strict Multer Constraints
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) { 
-        cb(null, 'uploads/'); 
-    },
-    filename: function (req, file, cb) {
+    destination: (req, file, cb) => cb(null, 'uploads/'),
+    filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, uniqueSuffix + '-' + file.originalname);
     }
 });
 
-// UPGRADE: Note the change to upload.array('documents', 5) to allow up to 5 files at once
-const upload = multer({ storage: storage });
+const upload = multer({ 
+    storage: storage,
+    limits: { 
+        fileSize: 5 * 1024 * 1024, // 5 MB limit
+        files: 5 
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedMimeTypes = [
+            'application/pdf', 
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+        if (allowedMimeTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only PDF and DOCX are allowed.'));
+        }
+    }
+});
 
 // ============================================================================
-// 2. DATABASE CONNECTION & UPGRADED SCHEMA
+// 3. DATABASE CONNECTION
 // ============================================================================
 mongoose.connect('mongodb://localhost:27017/tuk-mapping')
-  .then(() => console.log('✅ Connected to MongoDB successfully!'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => console.error('❌ MongoDB error:', err));
 
 const ProfileSchema = new mongoose.Schema({
     userId: { type: String, required: true },      
     userEmail: { type: String, required: true },
     userName: { type: String },                    
-    userPicture: { type: String },                 
     documentsAnalyzed: [{ type: String }],         
     generatedProfile: { type: Object, required: true }, 
     createdAt: { type: Date, default: Date.now }
@@ -56,160 +109,91 @@ const ProfileSchema = new mongoose.Schema({
 const Profile = mongoose.model('Profile', ProfileSchema);
 
 // ============================================================================
-// 3. MAIN ROUTE: MULTI-DOCUMENT ANALYSIS & METADATA CAPTURE
+// 4. PROTECTED ROUTES
 // ============================================================================
-app.post('/api/analyze-data', upload.array('documents', 5), async (req, res) => {
-    console.log(`--- Received ${req.files ? req.files.length : 0} Documents for Analysis ---`);
-    
-    if (!req.files || req.files.length === 0) {
-        return res.status(400).send('No documents uploaded.');
-    }
+
+// Multi-Document Analysis with Auth, Limits, and Cleanup
+app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
+    if (!req.files || req.files.length === 0) return res.status(400).send('No documents.');
 
     try {
-        // 1. Parse metadata sent from React
-        const metadata = JSON.parse(req.body.metadata || '{}');
-        const userId = metadata.uid || 'anonymous';
-        const userEmail = metadata.email || 'unknown@example.com';
-        const userName = metadata.displayName || 'User';
-        const userPicture = metadata.photoURL || '';
-        
         let combinedText = "";
         const processedFileNames = [];
 
-        // 2. LOOP: Go through every uploaded file and extract the text
         for (const file of req.files) {
             processedFileNames.push(file.originalname);
-            const filePath = file.path;
             let extractedText = "";
-
-            // Check file type and parse accordingly
             if (file.mimetype === 'application/pdf') {
-                const dataBuffer = fs.readFileSync(filePath);
-                const pdfData = await pdfParse(dataBuffer);
+                const pdfData = await pdfParse(fs.readFileSync(file.path));
                 extractedText = pdfData.text;
-            } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-                const docxData = await mammoth.extractRawText({ path: filePath });
-                extractedText = docxData.value;
             } else {
-                console.warn(`Unsupported file type skipped: ${file.originalname}`);
-                // Clean up unsupported file to save space
-                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-                continue; 
+                const docxData = await mammoth.extractRawText({ path: file.path });
+                extractedText = docxData.value;
             }
-
-            // Combine the text with clear markers for the AI
-            combinedText += `\n\n--- START OF DOCUMENT: ${file.originalname} ---\n`;
-            combinedText += extractedText;
-            combinedText += `\n--- END OF DOCUMENT: ${file.originalname} ---\n`;
-
-            // Clean up file after text extraction
-            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            combinedText += `\n--- DOC: ${file.originalname} ---\n${extractedText}`;
         }
 
-        console.log(`Successfully extracted a total of ${combinedText.length} characters.`);
-
-        // 3. Feed the massive combined text to Llama 3.2
-        const aiPrompt = `
-        You are an expert career advisor mapping university coursework to the job market.
-        Analyze the following combined text from multiple student documents. 
-        
-        Extract the academic focus, technical skills, and soft skills. Then, suggest 2-3 marketable freelance or professional services the student can offer.
-        
-        Combined Document Text:
-        """${combinedText.substring(0, 15000)}""" // Safeguard against memory overload
-        
-        Strictly return the result as a JSON object matching this structure:
-        {
-          "bio": "A brief summary of their academic focus based on the documents",
-          "acquired_skills": ["Skill 1", "Skill 2"],
-          "soft_skills": ["Skill A", "Skill B"],
-          "marketable_services": [
-            { "service_name": "Name", "description": "How they provide value" }
-          ],
-          "employability_score": 85
-        }
-        OUTPUT ONLY VALID JSON.
-        `;
+        const aiPrompt = `Analyze student coursework text and return JSON: { "bio": "", "acquired_skills": [], "soft_skills": [], "marketable_services": [], "employability_score": 0 } \nText: ${combinedText.substring(0, 10000)}`;
 
         const response = await axios.post('http://localhost:11434/api/generate', {
-            model: 'llama3.2:1b',
+            model: 'llama3.2',
             prompt: aiPrompt,
-            stream: false,
-            options: { 
-                temperature: 0.3, 
-                num_ctx: 4096 // Expanded context window for multiple files
-            }
+            stream: false
         });
 
-        // 4. Heal JSON, save to MongoDB, and return to React
-        const repairedJson = jsonrepair(response.data.response);
-        const generatedProfile = JSON.parse(repairedJson);
-
+        const generatedProfile = JSON.parse(jsonrepair(response.data.response));
         const newProfile = new Profile({
-            userId,
-            userEmail,
-            userName,
-            userPicture,
+            userId: req.user.uid, // From Verified Token
+            userEmail: req.user.email,
+            userName: req.user.name || 'User',
             documentsAnalyzed: processedFileNames,
             generatedProfile
         });
 
         await newProfile.save();
-        console.log('✅ Multi-document profile saved to database.');
-        
         res.json(generatedProfile);
 
     } catch (error) {
-        console.error('❌ Pipeline Error:', error.message);
+        console.error('❌ Analysis Error:', error.message);
         res.status(500).send('Error analyzing documents.');
+    } finally {
+        // NEW: Auto-Cleanup (Ephemeral Storage)
+        req.files.forEach(file => {
+            if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        });
     }
 });
 
-// ─── Route: Fetch User Historical Data ──────────────────────────────────────
-app.get('/api/user-history/:userId', async (req, res) => {
+// Secure History Fetch
+app.get('/api/user-history', verifyAuth, async (req, res) => {
     try {
-        const userHistory = await Profile.find({ userId: req.params.userId }).sort({ createdAt: -1 });
-        res.json({ count: userHistory.length, history: userHistory });
+        const userHistory = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
+        res.json({ history: userHistory });
     } catch (error) {
-        res.status(500).send('An error occurred while fetching history.');
+        res.status(500).send('Error fetching history.');
     }
 });
 
-// ─── Route: Synthesis (Master Profile) ─────────────────────────────────────
-app.post('/api/synthesize-profile', async (req, res) => {
-    const { userId } = req.body;
+// Secure Synthesis
+app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     try {
-        const history = await Profile.find({ userId }).sort({ createdAt: -1 });
+        const history = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
         if (history.length < 2) return res.status(400).send("Need at least 2 documents.");
 
         const pastProfiles = history.map(doc => doc.generatedProfile);
-
-        const synthesisPrompt = `
-        Synthesize these separate document analyses into ONE comprehensive master profile.
-        Strictly output ONLY valid JSON.
-        Data: ${JSON.stringify(pastProfiles)}
-        `;
+        const synthesisPrompt = `Synthesize these analyses into one master JSON profile: ${JSON.stringify(pastProfiles)}`;
 
         const response = await axios.post('http://localhost:11434/api/generate', {
-            model: 'llama3.2:1b',
+            model: 'llama3.2',
             prompt: synthesisPrompt,
             stream: false
         });
 
-        const repairedJson = jsonrepair(response.data.response);
-        const masterProfile = JSON.parse(repairedJson);
-        res.json(masterProfile);
-
+        res.json(JSON.parse(jsonrepair(response.data.response)));
     } catch (error) {
-        console.error('❌ Synthesis Error:', error.message);
         res.status(500).send('Error synthesizing profile.');
     }
 });
 
-// ============================================================================
-// 4. START THE SERVER
-// ============================================================================
 const PORT = 5000;
-app.listen(PORT, () => {
-    console.log(`🚀 Upgraded Backend running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Secure Backend on http://localhost:${PORT}`));
