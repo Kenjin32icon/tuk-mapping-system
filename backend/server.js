@@ -12,12 +12,12 @@ const mammoth = require('mammoth');
 const { jsonrepair } = require('jsonrepair'); 
 const admin = require('firebase-admin');     
 const rateLimit = require('express-rate-limit'); 
-const nodemailer = require('nodemailer'); // NEW: Nodemailer
+const nodemailer = require('nodemailer'); 
 
 // Initialize Groq
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Initialize Firebase Admin 
+// Initialize Firebase Admin (Ensure serviceAccountKey.json is in your root directory)
 const serviceAccount = require("./serviceAccountKey.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -73,7 +73,6 @@ mongoose.connect('mongodb://localhost:27017/tuk-mapping')
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB error:', err));
 
-// NEW: Updated Profile Schema
 const ProfileSchema = new mongoose.Schema({
     userId: { type: String, required: true },
     userEmail: { type: String, required: true },
@@ -84,13 +83,12 @@ const ProfileSchema = new mongoose.Schema({
 
 const Profile = mongoose.model('Profile', ProfileSchema);
 
-// Route: Analyze Documents 
+// Route: Analyze Documents (UPDATED PROMPT)
 app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).send('No documents.');
 
     try {
         let combinedText = "";
-
         for (const file of req.files) {
             let text = "";
             if (file.mimetype === 'application/pdf') {
@@ -103,10 +101,10 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
             combinedText += `\n--- DOC: ${file.originalname} ---\n${text}`;
         }
 
-        // NEW: Kenyan Market Alignment Prompt
+        // UPDATED: Kenyan Market Cross-Matching & Service Potentiality Prompt
         const aiPrompt = `
-You are an expert tech recruiter and career strategist based in Nairobi, Kenya (familiar with the Silicon Savannah, local tech hubs, and the Kenyan job market). 
-Analyze the following academic coursework and extract the student's profile.
+You are an expert tech recruiter and career strategist based in Nairobi, Kenya.
+Analyze the following coursework and extract the student's profile.
 
 Strictly return ONLY a valid JSON object matching this exact structure:
 {
@@ -115,15 +113,19 @@ Strictly return ONLY a valid JSON object matching this exact structure:
     "technical": ["Skill 1", "Skill 2", "Skill 3"],
     "soft": ["Skill A", "Skill B"]
   },
-  "kenyan_market_alignment": "A 2-sentence analysis of how these skills fit into the current Kenyan job market (e.g., demand in Nairobi tech hubs, NGOs, Safaricom, local startups).",
+  "kenyan_market_alignment": {
+    "best_skill_area_expertise": "e.g., FinTech Data Analysis or AgriTech Software Development",
+    "description": "A professional description of how they fit into this specific sector in the Kenyan market.",
+    "service_potentiality_score": 85
+  },
   "recommended_role": {
     "title": "e.g., Junior Data Analyst",
     "description": "What this role entails."
   },
   "marketable_services": [
     { 
-      "service_name": "Name of freelance/consulting service", 
-      "demand_score": 85, 
+      "service_name": "Name of service", 
+      "demand_score": 90, 
       "description": "How they provide value" 
     }
   ]
@@ -132,8 +134,6 @@ Strictly return ONLY a valid JSON object matching this exact structure:
 Combined Document Text:
 """${combinedText.substring(0, 15000)}"""
 `;
-
-        console.log("Sending text to Groq API...");
 
         const completion = await groq.chat.completions.create({
             messages: [
@@ -180,7 +180,7 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
         if (history.length < 2) return res.status(400).send("Need 2+ documents.");
 
         const pastProfiles = history.map(doc => doc.generatedProfile);
-        const synthesisPrompt = `Synthesize these analyses into ONE master JSON profile matching the input structure strictly: ${JSON.stringify(pastProfiles)}`;
+        const synthesisPrompt = `Synthesize these analyses into ONE master JSON profile matching the input structure: ${JSON.stringify(pastProfiles)}`;
 
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: synthesisPrompt }],
@@ -194,19 +194,16 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     } catch (e) { res.status(500).send('Synthesis failed.'); }
 });
 
-// NEW: AI Job Matching API
+// AI Job Matching API
 app.post('/api/match-job', verifyAuth, async (req, res) => {
     const { jobDescription } = req.body;
-
-    // Fetch recent student profiles
     const candidates = await Profile.find().sort({ createdAt: -1 }).limit(50);
     const candidateData = candidates.map(c => ({ id: c._id, email: c.userEmail, profile: c.generatedProfile }));
 
     const matchPrompt = `
-    You are an AI Recruitment Engine. Read the following Job Description and the list of student profiles.
-    Find the top 3 best-matching students. 
+    You are an AI Recruitment Engine. Read the following Job Description and student profiles.
+    Find top 3 best-matching students. 
     Return strictly JSON: { "matches": [ { "candidateId": "id_here", "email": "email_here", "matchPercentage": 90, "reason": "Short reason" } ] }
-    
     Job Description: ${jobDescription}
     Candidates: ${JSON.stringify(candidateData)}
     `;
@@ -217,36 +214,8 @@ app.post('/api/match-job', verifyAuth, async (req, res) => {
             model: "llama-3.3-70b-versatile",
             response_format: { type: "json_object" }
         });
-
         res.json(JSON.parse(completion.choices[0].message.content));
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Matching failed.');
-    }
-});
-
-// NEW: Automated Outreach API
-app.post('/api/send-offer', verifyAuth, async (req, res) => {
-    const { candidateEmail, roleTitle, message } = req.body;
-
-    try {
-        let transporter = nodemailer.createTransport({
-            service: 'gmail', 
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-        });
-
-        await transporter.sendMail({
-            from: '"TU-K Talent Portal" <admin@tukenya.ac.ke>',
-            to: candidateEmail,
-            subject: `Interview Invitation: ${roleTitle}`,
-            text: message
-        });
-
-        res.send({ success: true });
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Email failed.');
-    }
+    } catch (error) { res.status(500).send('Matching failed.'); }
 });
 
 app.listen(5000, () => console.log(`🚀 Groq-Powered Backend on http://localhost:5000`));
