@@ -15,9 +15,14 @@ const { jsonrepair } = require('jsonrepair');
 const admin = require('firebase-admin');     // NEW: Firebase Admin SDK
 const rateLimit = require('express-rate-limit'); // NEW: Rate Limiting
 
-// Initialize Firebase Admin (Replace with your actual service account path)
-// const serviceAccount = require("./path-to-your-service-account.json");
-// admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+// Initialize Firebase Admin
+const admin = require('firebase-admin');
+// const serviceAccount = require
+const serviceAccount = require("./serviceAccountKey.json");
+// admin.initializeApp
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 const app = express();
 

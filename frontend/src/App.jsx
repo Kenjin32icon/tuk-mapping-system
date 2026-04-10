@@ -16,7 +16,7 @@ import {
 
 // --- MODULE 4: Statistics Visualization Component ---
 function AnalyticsDashboard({ analyticsData, masterProfile }) {
-  const radarData = masterProfile?.skills?.technical?.slice(0, 6).map((skill) => ({
+  const radarData = masterProfile?.acquired_skills?.slice(0, 6).map((skill) => ({
     subject: skill.length > 12 ? skill.substring(0, 12) + '...' : skill, 
     A: 70 + (Math.random() * 30), 
     fullMark: 100,
@@ -43,7 +43,7 @@ function AnalyticsDashboard({ analyticsData, masterProfile }) {
             <Tooltip />
           </RadarChart>
         ) : (
-          <BarChart data={analyticsData.chartData || []}>
+          <BarChart data={analyticsData?.chartData || []}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="name" tick={{ fontSize: 10 }} />
             <YAxis hide />
@@ -87,9 +87,9 @@ function OnboardingView({ user, onProcess, isUploading, files, onFileChange }) {
   return (
     <div className="max-w-3xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-        <h2 className="text-2xl font-bold mb-4">Welcome, {user?.displayName.split(' ')[0]}!</h2>
+        <h2 className="text-2xl font-bold mb-4">Welcome, {user?.displayName?.split(' ')[0]}!</h2>
         <p className="text-slate-600 mb-6 leading-relaxed">
-          Simply upload your university materials below. You can select multiple documents at once (e.g., projects, essays, abstracts).
+          Simply upload your university materials below. You can select multiple documents at once (e.g., projects, essays).
         </p>
         
         <div 
@@ -165,7 +165,7 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
           <h2 className="text-2xl font-bold text-slate-900">{user?.displayName}</h2>
           <p className="text-slate-500">{currentProfile?.professional_title || "Student Researcher"}</p>
           <div className="mt-2 inline-block px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
-            Market Readiness: {currentProfile?.employability_score || '85'}/100
+            Market Readiness: {currentProfile?.employability_score || '0'}/100
           </div>
         </div>
         <button onClick={onDownload} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
@@ -181,7 +181,7 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
               <Settings className="w-5 h-5 text-blue-500" /> Technical Skills
             </h3>
             <div className="flex flex-wrap gap-2">
-              {(currentProfile?.acquired_skills || ['Analysis']).map((s, i) => (
+              {(currentProfile?.acquired_skills || []).map((s, i) => (
                 <span key={i} className="px-3 py-1 bg-slate-100 text-slate-700 rounded-lg text-sm">{s}</span>
               ))}
             </div>
@@ -191,7 +191,7 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
               <BrainCircuit className="w-5 h-5 text-emerald-500" /> Soft Skills
             </h3>
             <div className="flex flex-wrap gap-2">
-              {(currentProfile?.soft_skills || ['Communication']).map((s, i) => (
+              {(currentProfile?.soft_skills || []).map((s, i) => (
                 <span key={i} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-sm">{s}</span>
               ))}
             </div>
@@ -234,9 +234,9 @@ function App() {
   const [masterProfile, setMasterProfile] = useState(null);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [isAppLoading, setIsAppLoading] = useState(true);
   const [userHistory, setUserHistory] = useState([]);
-  
-  // 1. Array of files
   const [files, setFiles] = useState([]);
 
   useEffect(() => {
@@ -244,24 +244,32 @@ function App() {
       setUser(currentUser);
       if (currentUser) {
         setView('dashboard');
-        fetchUserHistory(currentUser.uid);
+        await fetchUserHistory(currentUser);
       } else {
         setView('landing');
       }
+      setIsAppLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  const fetchUserHistory = async (uid) => {
+  // Secure History Fetch with Token
+  const fetchUserHistory = async (currentUser) => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/user-history/${uid}`);
+      const token = await currentUser.getIdToken();
+      const res = await axios.get(`http://localhost:5000/api/user-history`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setUserHistory(res.data.history);
       if (res.data.history.length > 0) {
         setProfile(res.data.history[0].generatedProfile);
-        const analyticRes = await axios.get(`http://localhost:5000/api/analytics/${uid}`);
+        // Assuming analytics is also protected
+        const analyticRes = await axios.get(`http://localhost:5000/api/analytics/${currentUser.uid}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         setAnalyticsData(analyticRes.data);
       }
-    } catch (e) { console.error("History error", e); }
+    } catch (e) { console.error("History fetch error", e); }
   };
 
   const handleLogin = async () => {
@@ -275,6 +283,9 @@ function App() {
   const handleLogout = async () => {
     await signOut(auth);
     setMenuOpen(false);
+    setProfile(null);
+    setMasterProfile(null);
+    setUserHistory([]);
   };
 
   const handleFileChange = (e) => {
@@ -282,56 +293,60 @@ function App() {
     setFiles(selectedFiles);
   };
 
-  // --- UPDATED UPLOAD LOGIC ---
+  // Secure Multi-Document Processing with Token
   const handleProcessDocuments = async () => {
     if (files.length === 0 || !user) {
-      return alert("Please log in and select at least one document!");
+      return alert("Select at least one document!");
     }
     
     setLoading(true);
     setView('processing');
     
     try {
+      const token = await user.getIdToken();
       const formData = new FormData();
       
-      // ✅ CORRECT: Appending each file under the key 'documents' (plural)
       files.forEach((file) => {
         formData.append('documents', file); 
       });
       
-      // Attach Google User Metadata
-      const userMetadata = {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL
-      };
-      formData.append('metadata', JSON.stringify(userMetadata));
-
-      // Send to backend
       const response = await axios.post('http://localhost:5000/api/analyze-data', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data' 
+        }
       });
       
       setProfile(response.data);
       setView('dashboard');
       setFiles([]); 
+      fetchUserHistory(user); // Refresh history list
     } catch (error) {
-      console.error("Multi-Document Pipeline Error:", error);
-      alert("Something went wrong analyzing the documents.");
+      console.error("Analysis Error:", error);
+      alert("Something went wrong during analysis.");
       setView('onboarding');
     }
     setLoading(false);
   };
 
+  // Secure Master Profile Synthesis with Token
   const generateMaster = async () => {
-    setLoading(true);
+    if (!user) return alert("Log in first!");
+    setIsSynthesizing(true);
     try {
-      const response = await axios.post('http://localhost:5000/api/synthesize-profile', { userId: user.uid });
+      const token = await user.getIdToken();
+      const response = await axios.post('http://localhost:5000/api/synthesize-profile', 
+        { userId: user.uid }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       setMasterProfile(response.data);
       setMenuOpen(false);
-    } catch (e) { alert("Synthesis failed."); }
-    setLoading(false);
+      setView('dashboard');
+    } catch (e) { 
+      console.error("Synthesis Error:", e);
+      alert("Synthesis failed."); 
+    }
+    setIsSynthesizing(false);
   };
 
   const downloadPDF = () => {
@@ -339,6 +354,8 @@ function App() {
     const opt = { margin: 1, filename: 'Market_Readiness_Report.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } };
     html2pdf().set(opt).from(element).save();
   };
+
+  if (isAppLoading) return <ProcessingView />;
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
@@ -363,8 +380,13 @@ function App() {
                   <UploadCloud className="w-4 h-4" /> Upload New
                 </button>
                 {userHistory.length >= 2 && (
-                  <button onClick={generateMaster} className="w-full text-left px-4 py-2 hover:bg-purple-50 text-purple-700 text-sm flex items-center gap-2">
-                    <BrainCircuit className="w-4 h-4" /> Generate Master Profile
+                  <button 
+                    onClick={generateMaster} 
+                    disabled={isSynthesizing}
+                    className="w-full text-left px-4 py-2 hover:bg-purple-50 text-purple-700 text-sm flex items-center gap-2 disabled:text-slate-400"
+                  >
+                    <BrainCircuit className="w-4 h-4" /> 
+                    {isSynthesizing ? 'Synthesizing...' : 'Generate Master Profile'}
                   </button>
                 )}
                 <hr className="my-1 border-slate-100" />
