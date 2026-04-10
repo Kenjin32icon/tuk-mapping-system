@@ -114,7 +114,7 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
                 { role: "system", content: "You are an expert career advisor. You must reply strictly in valid JSON format." },
                 { role: "user", content: aiPrompt }
             ],
-            model: "llama-3.1-70b-versatile",
+            model: "llama-3.3-70b-versatile",
             temperature: 0.3,
             response_format: { type: "json_object" }
         });
@@ -159,7 +159,7 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
 
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: synthesisPrompt }],
-            model: "llama-3.1-70b-versatile",
+            model: "llama-3.3-70b-versatile",
             temperature: 0.3,
             response_format: { type: "json_object" }
         });
