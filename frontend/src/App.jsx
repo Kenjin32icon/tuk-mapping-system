@@ -3,7 +3,6 @@ import axios from 'axios';
 import html2pdf from 'html2pdf.js';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
-import { BrainCircuit, LogOut, UploadCloud, LayoutDashboard, Menu, X, Settings } from 'lucide-react';
 
 // Modular Components
 import LandingView from './components/LandingView';
@@ -19,15 +18,17 @@ function App() {
   const [profile, setProfile] = useState(null);
   const [masterProfile, setMasterProfile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+
+  // 1. Determine isAdmin status globally
+  const isAdmin = user?.email === 'kariukilewis04@students.tukenya.ac.ke';
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        // 1. STRICT ADMIN CHECK: Locked to your specific account
-        const isAdmin = currentUser.email === 'kariukilewis04@students.tukenya.ac.ke';
-        setView(isAdmin ? 'admin_dashboard' : 'onboarding');
+        // Use local check for immediate routing
+        const isUserAdmin = currentUser.email === 'kariukilewis04@students.tukenya.ac.ke';
+        setView(isUserAdmin ? 'admin_dashboard' : 'onboarding');
       } else {
         setView('landing');
       }
@@ -44,7 +45,6 @@ function App() {
     await signOut(auth);
     setProfile(null);
     setMasterProfile(null);
-    setMenuOpen(false);
     setView('landing');
   };
 
@@ -54,7 +54,6 @@ function App() {
     
     setLoading(true);
     setView('processing');
-    setMenuOpen(false); // Close menu if upload triggered from menu
 
     try {
       const token = await user.getIdToken();
@@ -87,61 +86,15 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* GLOBAL HEADER */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-6 py-4 sticky top-0 z-50 flex justify-between items-center">
-        <div className="flex items-center gap-2 text-emerald-600 font-bold text-xl cursor-pointer" onClick={() => user && setView(user.email === 'kariukilewis04@students.tukenya.ac.ke' ? 'admin_dashboard' : 'dashboard')}>
-          <BrainCircuit className="w-8 h-8" />
-          <span className="hidden md:inline">TUK Mapping</span>
-        </div>
-        
-        {user && (
-          <div className="relative">
-             <button 
-               onClick={() => setMenuOpen(!menuOpen)} 
-               className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
-             >
-                {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-             </button>
+      {/* 2. DYNAMIC NAVBAR */}
+      <Navbar 
+        user={user} 
+        isAdmin={isAdmin} 
+        view={view} 
+        setView={setView} 
+        handleLogout={handleLogout} 
+      />
 
-             {/* 2. ENHANCED HAMBURGER MENU */}
-             {menuOpen && (
-               <div className="absolute right-0 top-14 w-56 bg-white shadow-2xl border border-slate-100 rounded-2xl py-2 animate-in slide-in-from-top-4 duration-200">
-                  <div className="px-4 py-2 mb-2 border-b border-slate-50">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Signed in as</p>
-                    <p className="text-xs font-bold truncate text-emerald-600">{user.email}</p>
-                  </div>
-
-                  <button 
-                    onClick={() => { setView(user.email === 'kariukilewis04@students.tukenya.ac.ke' ? 'admin_dashboard' : 'dashboard'); setMenuOpen(false); }} 
-                    className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 text-sm font-medium"
-                  >
-                    <LayoutDashboard className="w-4 h-4 text-slate-400"/> Dashboard
-                  </button>
-
-                  <label className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 text-sm font-medium cursor-pointer">
-                    <UploadCloud className="w-4 h-4 text-slate-400"/> Upload New
-                    <input type="file" multiple className="hidden" onChange={handleProcessDocuments}/>
-                  </label>
-
-                  <button className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 text-sm font-medium text-slate-600">
-                    <Settings className="w-4 h-4 text-slate-400"/> Settings
-                  </button>
-
-                  <hr className="my-2 border-slate-50" />
-                  
-                  <button 
-                    onClick={handleLogout} 
-                    className="w-full text-left px-4 py-3 hover:bg-red-50 text-red-600 flex items-center gap-3 text-sm font-bold"
-                  >
-                    <LogOut className="w-4 h-4"/> Sign Out
-                  </button>
-               </div>
-             )}
-          </div>
-        )}
-      </header>
-
-      {/* VIEW ROUTER */}
       <main className="container mx-auto p-4 md:p-8 max-w-6xl">
         {view === 'landing' && <LandingView onLogin={handleLogin} />}
         
@@ -159,10 +112,7 @@ function App() {
                 <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
                 <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
              </div>
-             <div>
-                <h3 className="text-2xl font-bold text-slate-900">Analysing Profile</h3>
-                <p className="text-slate-500 mt-1">Our AI is cross-referencing your skills with Kenyan market demands...</p>
-             </div>
+             <h3 className="text-2xl font-bold text-slate-900">AI is mapping your potential...</h3>
           </div>
         )}
 
@@ -176,6 +126,9 @@ function App() {
         )}
 
         {view === 'admin_dashboard' && <AdminDashboardView />}
+
+        {/* 3. SETTINGS VIEW */}
+        {view === 'settings' && <ProfileSettings user={user} isAdmin={isAdmin} />}
       </main>
     </div>
   );
