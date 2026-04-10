@@ -16,7 +16,7 @@ const admin = require('firebase-admin');     // NEW: Firebase Admin SDK
 const rateLimit = require('express-rate-limit'); // NEW: Rate Limiting
 
 // Initialize Firebase Admin
-const admin = require('firebase-admin');
+//const admin = require('firebase-admin');
 // const serviceAccount = require
 const serviceAccount = require("./serviceAccountKey.json");
 // admin.initializeApp

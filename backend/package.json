@@ -34,6 +34,7 @@
     "escape-html": "^1.0.3",
     "etag": "^1.8.1",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.2",
     "finalhandler": "^2.1.1",
     "firebase-admin": "^13.8.0",
     "follow-redirects": "^1.15.11",
