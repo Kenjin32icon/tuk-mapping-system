@@ -10,6 +10,8 @@ import LandingView from './components/LandingView';
 import DashboardView from './components/DashboardView';
 import OnboardingView from './components/OnboardingView';
 import AdminDashboardView from './components/AdminDashboardView';
+import Navbar from './components/Navbar';
+import ProfileSettings from './components/ProfileSettings';
 
 function App() {
   const [user, setUser] = useState(null);
