@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import html2pdf from 'html2pdf.js';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { auth, googleProvider } from './firebase'; 
+import { auth, googleProvider } from './firebase';
 import { 
   Menu, X, UploadCloud, BrainCircuit, BarChart3, 
   FileText, TrendingUp, Settings, LogOut, LayoutDashboard 
@@ -89,7 +89,7 @@ function OnboardingView({ user, onProcess, isUploading, files, onFileChange }) {
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
         <h2 className="text-2xl font-bold mb-4">Welcome, {user?.displayName?.split(' ')[0]}!</h2>
         <p className="text-slate-600 mb-6 leading-relaxed">
-          Simply upload your university materials below. You can select multiple documents at once (e.g., projects, essays).
+          Simply upload your university materials below. You can select multiple documents at once.
         </p>
         
         <div 
@@ -157,8 +157,6 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500" id="student-profile-report">
-      
-      {/* MODULE 1: User Details */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-6">
         <img src={user?.photoURL || "https://via.placeholder.com/150"} alt="Profile" className="w-20 h-20 rounded-full border-4 border-emerald-100" />
         <div className="text-center md:text-left flex-1">
@@ -174,7 +172,6 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* MODULE 2: Skills Module */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 col-span-1 md:col-span-2 flex flex-col md:flex-row gap-6">
           <div className="flex-1 border-b md:border-b-0 md:border-r border-slate-100 pb-4 md:pb-0 md:pr-4">
             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -198,7 +195,6 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
           </div>
         </div>
 
-        {/* MODULE 3: Services */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-purple-500" /> Marketable Services
@@ -206,14 +202,13 @@ function DashboardView({ user, profile, masterProfile, analyticsData, onDownload
           <div className="space-y-4">
             {(currentProfile?.marketable_services || []).map((service, i) => (
               <div key={i} className="p-4 bg-slate-50 border border-slate-100 rounded-xl border-l-4 border-l-blue-500">
-                <h4 className="font-semibold text-slate-800">{service.service_name}</h4>
+                <h4 className="font-semibold text-slate-800">{service.service_name || service}</h4>
                 <p className="text-sm text-slate-600 mt-1">{service.description}</p>
               </div>
             ))}
           </div>
         </div>
 
-        {/* MODULE 4: Visualization */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center">
           <h3 className="text-lg font-bold text-slate-800 mb-4 self-start flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-slate-600" /> Market Potential Mapping
@@ -239,12 +234,21 @@ function App() {
   const [userHistory, setUserHistory] = useState([]);
   const [files, setFiles] = useState([]);
 
+  // Correction: Strategic Updates for auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         setView('dashboard');
-        await fetchUserHistory(currentUser);
+        try {
+          // Secure fetch with Token
+          const token = await currentUser.getIdToken();
+          const res = await axios.get('http://localhost:5000/api/user-history', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setUserHistory(res.data.history);
+          if (res.data.history.length > 0) setProfile(res.data.history[0].generatedProfile);
+        } catch (e) { console.error("Initial load error:", e); }
       } else {
         setView('landing');
       }
@@ -252,25 +256,6 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
-
-  // Secure History Fetch with Token
-  const fetchUserHistory = async (currentUser) => {
-    try {
-      const token = await currentUser.getIdToken();
-      const res = await axios.get(`http://localhost:5000/api/user-history`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setUserHistory(res.data.history);
-      if (res.data.history.length > 0) {
-        setProfile(res.data.history[0].generatedProfile);
-        // Assuming analytics is also protected
-        const analyticRes = await axios.get(`http://localhost:5000/api/analytics/${currentUser.uid}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setAnalyticsData(analyticRes.data);
-      }
-    } catch (e) { console.error("History fetch error", e); }
-  };
 
   const handleLogin = async () => {
     try {
@@ -293,22 +278,15 @@ function App() {
     setFiles(selectedFiles);
   };
 
-  // Secure Multi-Document Processing with Token
+  // Correction: Strategic Updates for Document Processing
   const handleProcessDocuments = async () => {
-    if (files.length === 0 || !user) {
-      return alert("Select at least one document!");
-    }
-    
+    if (files.length === 0 || !user) return alert("Select files!");
     setLoading(true);
     setView('processing');
-    
     try {
-      const token = await user.getIdToken();
+      const token = await user.getIdToken(); // Get Token
       const formData = new FormData();
-      
-      files.forEach((file) => {
-        formData.append('documents', file); 
-      });
+      files.forEach(f => formData.append('documents', f));
       
       const response = await axios.post('http://localhost:5000/api/analyze-data', formData, {
         headers: { 
@@ -316,35 +294,30 @@ function App() {
             'Content-Type': 'multipart/form-data' 
         }
       });
-      
       setProfile(response.data);
       setView('dashboard');
-      setFiles([]); 
-      fetchUserHistory(user); // Refresh history list
-    } catch (error) {
-      console.error("Analysis Error:", error);
-      alert("Something went wrong during analysis.");
-      setView('onboarding');
+    } catch (e) { 
+        alert("Analysis Error. Check if your backend and AI engine are running."); 
+        setView('onboarding');
     }
     setLoading(false);
   };
 
-  // Secure Master Profile Synthesis with Token
+  // Correction: Strategic Updates for Master Profile Synthesis
   const generateMaster = async () => {
     if (!user) return alert("Log in first!");
     setIsSynthesizing(true);
     try {
-      const token = await user.getIdToken();
-      const response = await axios.post('http://localhost:5000/api/synthesize-profile', 
-        { userId: user.uid }, 
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const token = await user.getIdToken(); // Get Token
+      const response = await axios.post('http://localhost:5000/api/synthesize-profile', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setMasterProfile(response.data);
       setMenuOpen(false);
       setView('dashboard');
     } catch (e) { 
-      console.error("Synthesis Error:", e);
-      alert("Synthesis failed."); 
+        console.error("Synthesis failed:", e);
+        alert("Synthesis failed. Ensure you have at least 2 analyses in history."); 
     }
     setIsSynthesizing(false);
   };
