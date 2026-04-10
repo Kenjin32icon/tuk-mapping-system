@@ -10,11 +10,11 @@ export default function SkillList({ title, skills }) {
   const hasMore = skills.length > 5;
 
   return (
-    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-      <h3 className="font-semibold text-slate-800 mb-3">{title}</h3>
-      <div className="flex flex-col gap-2">
+    <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
+      <h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">{title}</h3>
+      <div className="flex flex-wrap gap-2">
         {visibleSkills.map((skill, index) => (
-          <span key={index} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100">
+          <span key={index} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold border border-emerald-100">
             {skill}
           </span>
         ))}
@@ -23,9 +23,13 @@ export default function SkillList({ title, skills }) {
       {hasMore && (
         <button 
           onClick={() => setShowAll(!showAll)}
-          className="mt-3 flex items-center text-sm text-tukAccent hover:text-blue-700 font-medium"
+          className="mt-4 flex items-center text-xs text-blue-600 hover:text-blue-800 font-bold transition-colors"
         >
-          {showAll ? <><ChevronUp className="w-4 h-4 mr-1"/> Show Less</> : <><ChevronDown className="w-4 h-4 mr-1"/> Show {skills.length - 5} More</>}
+          {showAll ? (
+            <><ChevronUp className="w-4 h-4 mr-1"/> SHOW LESS</>
+          ) : (
+            <><ChevronDown className="w-4 h-4 mr-1"/> SHOW {skills.length - 5} MORE</>
+          )}
         </button>
       )}
     </div>
