@@ -35,8 +35,10 @@ const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
 // --- DATABASE SCHEMAS ---
-mongoose.connect('mongodb://localhost:27017/tuk-mapping')
-  .then(() => console.log('✅ Connected to MongoDB'))
+// CORRECTION: Database connectivity via Environment Variables
+const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/tuk-mapping';
+mongoose.connect(mongoURI)
+  .then(() => console.log('✅ Connected to MongoDB Atlas'))
   .catch(err => console.error('❌ MongoDB error:', err));
 
 const UserSchema = new mongoose.Schema({
@@ -70,13 +72,13 @@ const aiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: "Too m
 
 const verifyAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).send('Unauthorized');
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).send('Unauthorized');
     const token = authHeader.split(' ')[1];
     try {
         const decodedToken = await admin.auth().verifyIdToken(token);
         req.user = decodedToken;
         next();
-    } catch (error) { res.status(403).send('Unauthorized'); }
+    } catch (error) { res.status(403).send('Invalid Token'); }
 };
 
 const requireRole = (allowedRoles) => {
