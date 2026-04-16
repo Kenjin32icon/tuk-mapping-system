@@ -253,4 +253,28 @@ app.post('/api/match-job', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_A
     } catch (error) { res.status(500).send('Matching failed.'); }
 });
 
+// CORRECTION: Google Sheets Sync Trigger
+async function syncToGoogleSheets(studentData) {
+    try {
+        const auth = new google.auth.GoogleAuth({
+            credentials: JSON.parse(process.env.GOOGLE_SHEETS_KEY),
+            scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        });
+        const sheets = google.sheets({ version: 'v4', auth });
+        await sheets.spreadsheets.values.append({
+            spreadsheetId: process.env.SPREADSHEET_ID,
+            range: 'Sheet1!A:E',
+            valueInputOption: 'USER_ENTERED',
+            requestBody: {
+                values: [[
+                    studentData.name, 
+                    studentData.email, 
+                    studentData.masterProfile.recommended_role.title, 
+                    studentData.masterProfile.readiness_score
+                ]]
+            }
+        });
+    } catch (e) { console.error('Sheets Sync Failed', e); }
+}
+
 app.listen(5000, () => console.log(`🚀 Secure Role-Based Backend running on http://localhost:5000`));
