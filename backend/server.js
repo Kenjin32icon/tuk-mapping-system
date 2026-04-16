@@ -32,6 +32,38 @@ app.use(express.json());
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
+// --- DATABASE SCHEMAS ---
+
+mongoose.connect('mongodb://localhost:27017/tuk-mapping')
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => console.error('❌ MongoDB error:', err));
+
+// NEW SCHEMA: User Identity & RBAC
+const UserSchema = new mongoose.Schema({
+    firebaseUid: { type: String, required: true, unique: true },
+    email: { type: String, required: true },
+    name: { type: String },
+    role: { 
+        type: String, 
+        enum: ['SUPER_ADMIN', 'UNIVERSITY_ADMIN', 'GOVT_ADMIN', 'STUDENT'],
+        default: 'STUDENT' // Everyone is a student by default
+    },
+    institution: { type: String, default: 'Unassigned' },
+    createdAt: { type: Date, default: Date.now }
+});
+const User = mongoose.model('User', UserSchema);
+
+const ProfileSchema = new mongoose.Schema({
+    userId: { type: String, required: true },
+    userEmail: { type: String, required: true },
+    userName: { type: String },
+    generatedProfile: { type: Object, required: true }, 
+    createdAt: { type: Date, default: Date.now }
+});
+const Profile = mongoose.model('Profile', ProfileSchema);
+
+// --- MIDDLEWARE ---
+
 const verifyAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -47,6 +79,25 @@ const verifyAuth = async (req, res, next) => {
     }
 };
 
+// Middleware: Role-Based Access Control
+const requireRole = (allowedRoles) => {
+    return async (req, res, next) => {
+        try {
+            // req.user is set by verifyAuth middleware
+            const dbUser = await User.findOne({ firebaseUid: req.user.uid });
+            
+            if (!dbUser || !allowedRoles.includes(dbUser.role)) {
+                return res.status(403).json({ error: 'Forbidden: Insufficient permissions.' });
+            }
+            
+            req.dbUser = dbUser; 
+            next();
+        } catch (error) {
+            res.status(500).json({ error: 'Failed to verify user role.' });
+        }
+    };
+};
+
 const aiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 15, 
@@ -58,55 +109,58 @@ const upload = multer({
         destination: (req, file, cb) => cb(null, 'uploads/'),
         filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
     }),
-    limits: { fileSize: 5 * 1024 * 1024, files: 5 },
-    fileFilter: (req, file, cb) => {
-        const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        allowed.includes(file.mimetype) ? cb(null, true) : cb(new Error('Invalid file type.'));
+    limits: { fileSize: 5 * 1024 * 1024, files: 5 }
+});
+
+// --- API ROUTES ---
+
+// Route: Sync User and Get Role
+app.post('/api/sync-user', verifyAuth, async (req, res) => {
+    try {
+        const { email, name } = req.user; 
+        let dbUser = await User.findOne({ firebaseUid: req.user.uid });
+        
+        if (!dbUser) {
+            // Assign SUPER_ADMIN role to specific developer email
+            const assignedRole = (email === 'kariukilewis04@students.tukenya.ac.ke') 
+                ? 'SUPER_ADMIN' 
+                : 'STUDENT';
+
+            dbUser = new User({
+                firebaseUid: req.user.uid,
+                email: email,
+                name: name || 'User',
+                role: assignedRole
+            });
+            await dbUser.save();
+        }
+
+        res.json({ role: dbUser.role, institution: dbUser.institution });
+    } catch (error) {
+        res.status(500).send('Error syncing user.');
     }
 });
 
-mongoose.connect('mongodb://localhost:27017/tuk-mapping')
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.error('❌ MongoDB error:', err));
+// Protected Route: Job Matching (Only for Admin roles)
+app.post('/api/match-job', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN']), async (req, res) => {
+    const { jobDescription } = req.body;
+    try {
+        const candidates = await Profile.find().sort({ createdAt: -1 }).limit(50);
+        const candidateData = candidates.map(c => ({ id: c._id, email: c.userEmail, profile: c.generatedProfile }));
 
-const ProfileSchema = new mongoose.Schema({
-    userId: { type: String, required: true },
-    userEmail: { type: String, required: true },
-    userName: { type: String },
-    generatedProfile: { type: Object, required: true }, 
-    createdAt: { type: Date, default: Date.now }
+        const matchPrompt = `Find top 3 matches for: ${jobDescription}. Data: ${JSON.stringify(candidateData)}`;
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: matchPrompt }],
+            model: "llama-3.3-70b-versatile",
+            response_format: { type: "json_object" }
+        });
+        res.json(JSON.parse(completion.choices[0].message.content));
+    } catch (e) { res.status(500).send('Matching failed.'); }
 });
 
-const Profile = mongoose.model('Profile', ProfileSchema);
-
-// NEW: Generate Targeted Portfolio Endpoint
 app.post('/api/generate-portfolio', verifyAuth, aiLimiter, async (req, res) => {
     const { masterProfile, serviceName, serviceDescription } = req.body;
-
-    const portfolioPrompt = `
-    You are an expert tech recruiter and portfolio strategist in Nairobi, Kenya. 
-    The user wants to offer the following service: "${serviceName}" (${serviceDescription}).
-    Here is their verified Master Profile: ${JSON.stringify(masterProfile)}
-
-    Design a highly targeted, 3-project portfolio framework that they must build to prove their competence in this specific service to Kenyan employers (e.g., Safaricom, Equity Bank, local startups, or international Upwork clients).
-
-    Strictly output ONLY valid JSON matching this exact structure:
-    {
-      "portfolio_title": "e.g., Full-Stack E-Commerce Portfolio",
-      "targeted_bio": "A 2-sentence bio optimized specifically for pitching this service.",
-      "value_proposition": "Why a client should hire them for this service based on their skills.",
-      "projects": [
-        {
-          "project_name": "Name of the project",
-          "problem_statement": "The local Kenyan problem this project solves.",
-          "tech_stack": ["Skill 1", "Skill 2"],
-          "features": ["Feature 1", "Feature 2"],
-          "github_readme_pitch": "A 1-sentence pitch for the GitHub repo"
-        }
-      ],
-      "freelance_platform_tags": ["tag1", "tag2", "tag3"]
-    }
-    `;
+    const portfolioPrompt = `Recruiter Persona. Design 3 projects for: "${serviceName}". Profile: ${JSON.stringify(masterProfile)}. Strictly valid JSON.`;
 
     try {
         const completion = await groq.chat.completions.create({
@@ -115,16 +169,11 @@ app.post('/api/generate-portfolio', verifyAuth, aiLimiter, async (req, res) => {
             temperature: 0.4,
             response_format: { type: "json_object" }
         });
-        
         const portfolioData = JSON.parse(jsonrepair(completion.choices[0].message.content));
         res.json(portfolioData);
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Portfolio generation failed.');
-    }
+    } catch (error) { res.status(500).send('Portfolio generation failed.'); }
 });
 
-// Analyze Documents
 app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).send('No documents.');
     try {
@@ -141,8 +190,7 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
             combinedText += `\n--- DOC: ${file.originalname} ---\n${text}`;
         }
 
-        const aiPrompt = `Analyze the student profile and return JSON with bio, skills, kenyan_market_alignment, recommended_role, and marketable_services. Text: ${combinedText.substring(0, 15000)}`;
-
+        const aiPrompt = `Analyze student profile: ${combinedText.substring(0, 15000)}`;
         const completion = await groq.chat.completions.create({
             messages: [{ role: "system", content: "Reply strictly in JSON." }, { role: "user", content: aiPrompt }],
             model: "llama-3.3-70b-versatile",
@@ -162,21 +210,17 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
     finally { req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); }); }
 });
 
-// Synthesize Master Profile
 app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     try {
         const history = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
         if (history.length < 2) return res.status(400).send("Need 2+ documents.");
         const pastProfiles = history.map(doc => doc.generatedProfile);
-        
-        const synthesisPrompt = `Synthesize these profiles into a Master Profile for the Kenyan market. Data: ${JSON.stringify(pastProfiles)}`;
-
+        const synthesisPrompt = `Synthesize profiles: ${JSON.stringify(pastProfiles)}`;
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: synthesisPrompt }],
             model: "llama-3.3-70b-versatile",
             response_format: { type: "json_object" }
         });
-
         res.json(JSON.parse(jsonrepair(completion.choices[0].message.content)));
     } catch (e) { res.status(500).send('Synthesis failed.'); }
 });
