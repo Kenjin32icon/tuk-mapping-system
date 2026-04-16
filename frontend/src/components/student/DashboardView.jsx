@@ -1,22 +1,20 @@
 import React from 'react';
-import SkillList from './SkillList';
-import { Download, BrainCircuit, TrendingUp, Target, Activity } from 'lucide-react';
+import SkillList from '../shared/SkillList'; // ⬅️ UPDATED PATH
+import { Download, BrainCircuit, TrendingUp, Target, Activity, Info } from 'lucide-react';
 import { 
   Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell
 } from 'recharts';
 
-export default function DashboardView({ user, profile, masterProfile, onDownload, onGenerateMaster, isSynthesizing }) {
+export default function DashboardView({ user, profile, masterProfile, onDownload, onGenerateMaster, isSynthesizing, isGuest }) {
   const activeProfile = masterProfile || profile;
 
-  // Radar Data (Skill Competency)
   const radarData = (activeProfile?.skills?.technical || []).slice(0, 6).map((skill) => ({
     subject: skill.length > 12 ? skill.substring(0, 12) + '...' : skill,
     A: 60 + (Math.random() * 35),
     fullMark: 100,
   }));
 
-  // Bar Data (Sector Demand from the new prompt)
   const sectorData = activeProfile?.sector_demand || [
     { sector: "General Tech", demand_percentage: 50 }
   ];
@@ -26,6 +24,18 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
   return (
     <div className="flex flex-col space-y-8 animate-in fade-in duration-500 max-w-4xl mx-auto" id="master-dashboard-export">
       
+      {/* GUEST MODE BANNER */}
+      {isGuest && (
+        <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between shadow-sm gap-4">
+          <div className="flex items-center gap-3">
+            <Info className="w-6 h-6 text-indigo-600 flex-shrink-0" />
+            <p className="text-sm font-medium">
+              <b>Interactive Demo Mode:</b> You are viewing sample AI data. Sign in with Google to upload your real CV and generate your own Master Profile.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 1. PERSISTENT MASTER PROFILE ACTION BAR */}
       <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -39,7 +49,6 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
         </div>
         
         <div className="flex gap-3 w-full md:w-auto">
-          {/* Always Visible Generate/Update Button */}
           <button 
             onClick={onGenerateMaster}
             disabled={isSynthesizing}
@@ -63,10 +72,8 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
         <p className="text-slate-600 text-lg leading-relaxed">{activeProfile?.bio || "Upload more documents to generate a bio."}</p>
       </div>
 
-      {/* 3. VISUALIZATION MODULE (Side-by-Side Charts) */}
+      {/* 3. VISUALIZATION MODULE */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        
-        {/* Radar Chart */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-80 flex flex-col">
           <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase">
              <Target className="w-4 h-4 text-emerald-500" /> Competency Spread
@@ -83,7 +90,6 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
           </div>
         </div>
 
-        {/* Bar Chart: Sector Demand */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-80 flex flex-col">
           <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase">
              <TrendingUp className="w-4 h-4 text-blue-500" /> Kenyan Sector Demand

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Mail, Shield, Save, Settings, Loader2 } from 'lucide-react';
-import { auth } from '../firebase'; // Adjust path if needed
+import { auth } from '../../firebase'; // ⬅️ UPDATED PATH (Two folders up)
 
 export default function ProfileSettings({ user, isAdmin }) {
   const [phone, setPhone] = useState('');
