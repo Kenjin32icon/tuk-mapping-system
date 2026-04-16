@@ -15,7 +15,8 @@ const { google } = require('googleapis');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const serviceAccount = require("./serviceAccountKey.json");
+// Initialize Firebase Admin (Load from Env Var for Security)
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
