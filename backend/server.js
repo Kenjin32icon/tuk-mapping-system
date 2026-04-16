@@ -179,7 +179,10 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
         });
         await newProfile.save();
         res.json(generatedProfile);
-    } catch (error) { res.status(500).send('Analysis failed.'); }
+    } catch (error) { 
+        console.error("Analysis Error: ", error);
+        res.status(500).json({ error: 'Analysis failed. Please ensure your documents contain readable text and try again.' }); 
+    }
     finally { req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); }); }
 });
 
@@ -277,4 +280,5 @@ async function syncToGoogleSheets(studentData) {
     } catch (e) { console.error('Sheets Sync Failed', e); }
 }
 
-app.listen(5000, () => console.log(`🚀 Secure Role-Based Backend running on http://localhost:5000`));
+
+const PORT = process.env.PORT || 5000;
