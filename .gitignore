@@ -7,4 +7,3 @@ backend/package.json
 backend/.env
 backend/.gitignore
 backend/serviceAccountKey.json
-frontend
