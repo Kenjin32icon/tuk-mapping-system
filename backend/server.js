@@ -11,7 +11,7 @@ const mongoose = require('mongoose');
 const mammoth = require('mammoth');        
 const { jsonrepair } = require('jsonrepair'); 
 const admin = require('firebase-admin');     
-const rateLimit = require('express-rate-limit'); 
+const { google } = require('googleapis'); 
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
