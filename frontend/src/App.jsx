@@ -4,7 +4,6 @@ import html2pdf from 'html2pdf.js';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 
-// Modular Components
 import LandingView from './components/LandingView';
 import DashboardView from './components/DashboardView';
 import OnboardingView from './components/OnboardingView';
@@ -14,16 +13,17 @@ import ProfileSettings from './components/ProfileSettings';
 import SkillsModuleView from './components/SkillsModuleView';
 import MarketModuleView from './components/MarketModuleView';
 import ServicesModuleView from './components/ServicesModuleView';
+import PortfolioView from './components/PortfolioView'; // NEW IMPORT
 
 function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('landing');
   const [profile, setProfile] = useState(null);
   const [masterProfile, setMasterProfile] = useState(null);
+  const [portfolioData, setPortfolioData] = useState(null); // NEW STATE
   const [loading, setLoading] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
 
-  // Determine isAdmin status globally
   const isAdmin = user?.email === 'kariukilewis04@students.tukenya.ac.ke';
 
   useEffect(() => {
@@ -51,61 +51,66 @@ function App() {
     setView('landing');
   };
 
-  // 1. Function to handle "Skip this step"
-  const handleSkipToDashboard = () => {
-    setView('dashboard');
-  };
+  const handleSkipToDashboard = () => setView('dashboard');
 
-  // 2. Function to Generate Master Profile
   const handleGenerateMasterProfile = async () => {
     setIsSynthesizing(true);
-    setView('processing'); // Show loading screen
+    setView('processing');
     try {
       const token = await user.getIdToken();
       const response = await axios.post('http://localhost:5000/api/synthesize-profile', {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
       setMasterProfile(response.data);
-      setView('dashboard'); // Route back to the now-populated Master Dashboard
-    } catch (error) {
-      console.error(error);
-      alert("Could not generate Master Profile. Make sure you have uploaded at least 2 documents in the past.");
       setView('dashboard');
-    } finally {
-      setIsSynthesizing(false);
-    }
+    } catch (error) {
+      alert("Synthesis failed. You need 2+ documents.");
+      setView('dashboard');
+    } finally { setIsSynthesizing(false); }
+  };
+
+  // NEW: Portfolio Generation Handler
+  const handlePreparePortfolio = async (service) => {
+    setIsSynthesizing(true); // Reuse synthesizing state for loading text
+    setView('processing');
+    try {
+        const token = await user.getIdToken();
+        const response = await axios.post('http://localhost:5000/api/generate-portfolio', {
+            masterProfile,
+            serviceName: service.service_name,
+            serviceDescription: service.description
+        }, { headers: { Authorization: `Bearer ${token}` } });
+        
+        setPortfolioData(response.data);
+        setView('module_portfolio');
+    } catch (e) {
+        alert("Failed to generate portfolio blueprint.");
+        setView('module_services');
+    } finally { setIsSynthesizing(false); }
   };
 
   const handleProcessDocuments = async (e) => {
     const selectedFiles = Array.from(e.target.files);
     if (selectedFiles.length === 0) return;
-    
-    setLoading(true);
-    setView('processing');
-
+    setLoading(true); setView('processing');
     try {
       const token = await user.getIdToken();
       const formData = new FormData();
       selectedFiles.forEach(f => formData.append('documents', f));
-      
       const res = await axios.post('http://localhost:5000/api/analyze-data', formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' }
       });
       setProfile(res.data);
       setView('dashboard');
-    } catch (e) { 
-      alert("Analysis failed"); 
-      setView('onboarding'); 
-    }
+    } catch (e) { alert("Analysis failed"); setView('onboarding'); }
     setLoading(false);
   };
 
-  const downloadPDF = () => {
-    const element = document.getElementById('master-dashboard-export');
+  const downloadPDF = (elementId = 'master-dashboard-export') => {
+    const element = document.getElementById(elementId);
     const opt = {
       margin: 0.5,
-      filename: `${user?.displayName}_TUK_Profile.pdf`,
+      filename: `${user?.displayName}_Profile.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true }, 
       jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
@@ -116,26 +121,14 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <Navbar 
-        user={user} 
-        isAdmin={isAdmin} 
-        view={view} 
-        setView={setView} 
-        handleLogout={handleLogout} 
-        masterProfile={masterProfile}
+        user={user} isAdmin={isAdmin} view={view} setView={setView} 
+        handleLogout={handleLogout} masterProfile={masterProfile}
         onGenerateMaster={handleGenerateMasterProfile} 
       />
 
       <main className="container mx-auto p-4 md:p-8 max-w-6xl">
         {view === 'landing' && <LandingView onLogin={handleLogin} />}
-        
-        {view === 'onboarding' && (
-          <OnboardingView 
-            user={user} 
-            onFileChange={handleProcessDocuments} 
-            isUploading={loading} 
-            onSkip={handleSkipToDashboard}
-          />
-        )}
+        {view === 'onboarding' && <OnboardingView user={user} onFileChange={handleProcessDocuments} isUploading={loading} onSkip={handleSkipToDashboard}/>}
 
         {view === 'processing' && (
           <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
@@ -144,29 +137,20 @@ function App() {
                 <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
              </div>
              <h3 className="text-2xl font-bold text-slate-900">
-                {isSynthesizing ? 'Synthesizing Master Profile...' : 'AI is mapping your potential...'}
+                {portfolioData && !isSynthesizing ? 'Finalizing Blueprint...' : (isSynthesizing ? 'AI is Architecting...' : 'Mapping Potential...')}
              </h3>
           </div>
         )}
 
-        {view === 'dashboard' && (
-          <DashboardView 
-            user={user} 
-            profile={profile} 
-            masterProfile={masterProfile} 
-            onDownload={downloadPDF}
-            onGenerateMaster={handleGenerateMasterProfile}
-            isSynthesizing={isSynthesizing} 
-          />
-        )}
-
+        {view === 'dashboard' && <DashboardView user={user} profile={profile} masterProfile={masterProfile} onDownload={() => downloadPDF('master-dashboard-export')} onGenerateMaster={handleGenerateMasterProfile} isSynthesizing={isSynthesizing} />}
         {view === 'admin_dashboard' && <AdminDashboardView />}
         {view === 'settings' && <ProfileSettings user={user} isAdmin={isAdmin} />}
-
-{/* NEW MODULE ROUTING */}
         {view === 'module_skills' && <SkillsModuleView masterProfile={masterProfile} />}
         {view === 'module_market' && <MarketModuleView masterProfile={masterProfile} />}
-        {view === 'module_services' && <ServicesModuleView masterProfile={masterProfile} />}
+        
+        {/* UPDATED MODULES */}
+        {view === 'module_services' && <ServicesModuleView masterProfile={masterProfile} onPrepare={handlePreparePortfolio} />}
+        {view === 'module_portfolio' && <PortfolioView portfolioData={portfolioData} onBack={() => setView('module_services')} onDownload={() => downloadPDF('portfolio-export')} />}
       </main>
     </div>
   );

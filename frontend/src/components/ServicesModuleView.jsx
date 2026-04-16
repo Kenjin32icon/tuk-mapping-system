@@ -1,7 +1,7 @@
 import React from 'react';
 import { Briefcase, Zap, Star } from 'lucide-react';
 
-export default function ServicesModuleView({ masterProfile }) {
+export default function ServicesModuleView({ masterProfile, onPrepare }) {
   if (!masterProfile) return null;
 
   const services = masterProfile?.marketable_services || [];
@@ -18,7 +18,6 @@ export default function ServicesModuleView({ masterProfile }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {services.map((service, idx) => (
           <div key={idx} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow relative overflow-hidden group">
-            {/* Background Accent */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-bl-full -z-10 group-hover:scale-110 transition-transform"></div>
             
             <div className="flex justify-between items-start mb-4">
@@ -36,17 +35,15 @@ export default function ServicesModuleView({ masterProfile }) {
             <h3 className="text-xl font-bold text-slate-800 mb-3 leading-tight">{service.service_name}</h3>
             <p className="text-slate-500 text-sm leading-relaxed mb-6">{service.description}</p>
             
-            <button className="w-full py-3 bg-slate-50 text-slate-700 font-bold rounded-xl group-hover:bg-slate-900 group-hover:text-white transition-colors">
+            {/* UPDATED BUTTON */}
+            <button 
+              onClick={() => onPrepare(service)}
+              className="w-full py-3 bg-slate-50 text-slate-700 font-bold rounded-xl group-hover:bg-slate-900 group-hover:text-white transition-colors"
+            >
               Prepare Portfolio
             </button>
           </div>
         ))}
-
-        {services.length === 0 && (
-          <div className="col-span-full text-center py-12 bg-white rounded-3xl border border-slate-100">
-            <p className="text-slate-500 italic">No services recommended yet. Generate your Master Profile first.</p>
-          </div>
-        )}
       </div>
     </div>
   );

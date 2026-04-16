@@ -12,12 +12,9 @@ const mammoth = require('mammoth');
 const { jsonrepair } = require('jsonrepair'); 
 const admin = require('firebase-admin');     
 const rateLimit = require('express-rate-limit'); 
-const nodemailer = require('nodemailer'); 
 
-// Initialize Groq
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Initialize Firebase Admin (Ensure serviceAccountKey.json is in your root directory)
 const serviceAccount = require("./serviceAccountKey.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -68,7 +65,6 @@ const upload = multer({
     }
 });
 
-// Database
 mongoose.connect('mongodb://localhost:27017/tuk-mapping')
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB error:', err));
@@ -83,10 +79,54 @@ const ProfileSchema = new mongoose.Schema({
 
 const Profile = mongoose.model('Profile', ProfileSchema);
 
-// Route: Analyze Documents
+// NEW: Generate Targeted Portfolio Endpoint
+app.post('/api/generate-portfolio', verifyAuth, aiLimiter, async (req, res) => {
+    const { masterProfile, serviceName, serviceDescription } = req.body;
+
+    const portfolioPrompt = `
+    You are an expert tech recruiter and portfolio strategist in Nairobi, Kenya. 
+    The user wants to offer the following service: "${serviceName}" (${serviceDescription}).
+    Here is their verified Master Profile: ${JSON.stringify(masterProfile)}
+
+    Design a highly targeted, 3-project portfolio framework that they must build to prove their competence in this specific service to Kenyan employers (e.g., Safaricom, Equity Bank, local startups, or international Upwork clients).
+
+    Strictly output ONLY valid JSON matching this exact structure:
+    {
+      "portfolio_title": "e.g., Full-Stack E-Commerce Portfolio",
+      "targeted_bio": "A 2-sentence bio optimized specifically for pitching this service.",
+      "value_proposition": "Why a client should hire them for this service based on their skills.",
+      "projects": [
+        {
+          "project_name": "Name of the project",
+          "problem_statement": "The local Kenyan problem this project solves.",
+          "tech_stack": ["Skill 1", "Skill 2"],
+          "features": ["Feature 1", "Feature 2"],
+          "github_readme_pitch": "A 1-sentence pitch for the GitHub repo"
+        }
+      ],
+      "freelance_platform_tags": ["tag1", "tag2", "tag3"]
+    }
+    `;
+
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: portfolioPrompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.4,
+            response_format: { type: "json_object" }
+        });
+        
+        const portfolioData = JSON.parse(jsonrepair(completion.choices[0].message.content));
+        res.json(portfolioData);
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Portfolio generation failed.');
+    }
+});
+
+// Analyze Documents
 app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).send('No documents.');
-
     try {
         let combinedText = "";
         for (const file of req.files) {
@@ -101,161 +141,44 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
             combinedText += `\n--- DOC: ${file.originalname} ---\n${text}`;
         }
 
-        const aiPrompt = `
-You are an expert tech recruiter and career strategist based in Nairobi, Kenya.
-Analyze the following coursework and extract the student's profile.
-
-Strictly return ONLY a valid JSON object matching this exact structure:
-{
-  "bio": "A 2-sentence professional summary.",
-  "skills": {
-    "technical": ["Skill 1", "Skill 2", "Skill 3"],
-    "soft": ["Skill A", "Skill B"]
-  },
-  "kenyan_market_alignment": {
-    "best_skill_area_expertise": "e.g., FinTech Data Analysis or AgriTech Software Development",
-    "description": "A professional description of how they fit into this specific sector in the Kenyan market.",
-    "service_potentiality_score": 85
-  },
-  "recommended_role": {
-    "title": "e.g., Junior Data Analyst",
-    "description": "What this role entails."
-  },
-  "marketable_services": [
-    { 
-      "service_name": "Name of service", 
-      "demand_score": 90, 
-      "description": "How they provide value" 
-    }
-  ]
-}
-
-Combined Document Text:
-"""${combinedText.substring(0, 15000)}"""
-`;
+        const aiPrompt = `Analyze the student profile and return JSON with bio, skills, kenyan_market_alignment, recommended_role, and marketable_services. Text: ${combinedText.substring(0, 15000)}`;
 
         const completion = await groq.chat.completions.create({
-            messages: [
-                { role: "system", content: "You are an expert career advisor. You must reply strictly in valid JSON format." },
-                { role: "user", content: aiPrompt }
-            ],
+            messages: [{ role: "system", content: "Reply strictly in JSON." }, { role: "user", content: aiPrompt }],
             model: "llama-3.3-70b-versatile",
-            temperature: 0.3,
             response_format: { type: "json_object" }
         });
 
         const generatedProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
-
         const newProfile = new Profile({
             userId: req.user.uid,
             userEmail: req.user.email,
             userName: req.user.name || 'User',
             generatedProfile
         });
-
         await newProfile.save();
         res.json(generatedProfile);
-
-    } catch (error) {
-        console.error('❌ Error:', error);
-        res.status(500).send('Analysis failed.');
-    } finally {
-        req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); }); 
-    }
+    } catch (error) { res.status(500).send('Analysis failed.'); }
+    finally { req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); }); }
 });
 
-// Route: Fetch History
-app.get('/api/user-history', verifyAuth, async (req, res) => {
-    try {
-        const history = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
-        res.json({ history });
-    } catch (e) { res.status(500).send('History error.'); }
-});
-
-// Route: Synthesize Profile (UPDATED: Advanced Kenyan Market Integration)
+// Synthesize Master Profile
 app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     try {
         const history = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
         if (history.length < 2) return res.status(400).send("Need 2+ documents.");
-
         const pastProfiles = history.map(doc => doc.generatedProfile);
         
-        const synthesisPrompt = `
-        You are an elite Career Strategist and Data Analyst operating in Nairobi, Kenya (The Silicon Savannah).
-        Your task is to comprehensively analyze the following array of academic and professional documents from a student, synthesize them, and creatively curate their professional identity.
-
-        Deeply cross-match their aggregated skills against the current Kenyan job market (e.g., Safaricom ecosystem, local NGOs, FinTech startups like Flutterwave/Paystack, AgriTech, and E-Government).
-
-        Strictly output ONLY a valid JSON object matching this exact structure:
-        {
-          "bio": "A powerful 3-sentence professional summary.",
-          "skills": {
-            "technical": ["Curated Skill 1", "Curated Skill 2"],
-            "soft": ["Curated Skill 1", "Curated Skill 2"],
-            "transferable": ["Curated Skill 1", "Curated Skill 2"] 
-          },
-          "kenyan_market_alignment": {
-            "best_skill_area_expertise": "e.g., FinTech Data Infrastructure",
-            "description": "Deep analysis of how their skills fit into the Kenyan ecosystem.",
-            "service_potentiality_score": 85,
-            "market_readiness_score": 78,
-            "skill_scarcity_index": "High"
-          },
-          "sector_demand": [
-            { "sector": "FinTech", "demand_percentage": 90 },
-            { "sector": "AgriTech", "demand_percentage": 65 },
-            { "sector": "NGO / HealthTech", "demand_percentage": 75 }
-          ],
-          "recommended_role": {
-            "title": "e.g., Junior Cloud Architect",
-            "description": "What this role entails."
-          },
-          "marketable_services": [
-            { "service_name": "Service Name", "demand_score": 90, "description": "Value proposition" }
-          ]
-        }
-
-        Aggregated Student Data History: 
-        ${JSON.stringify(pastProfiles)}
-        `;
+        const synthesisPrompt = `Synthesize these profiles into a Master Profile for the Kenyan market. Data: ${JSON.stringify(pastProfiles)}`;
 
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: synthesisPrompt }],
             model: "llama-3.3-70b-versatile",
-            temperature: 0.4, // Slightly higher for more creative synthesis
             response_format: { type: "json_object" }
         });
 
-        const masterProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
-        res.json(masterProfile);
-    } catch (e) { 
-        console.error('Synthesis Error:', e);
-        res.status(500).send('Synthesis failed.'); 
-    }
+        res.json(JSON.parse(jsonrepair(completion.choices[0].message.content)));
+    } catch (e) { res.status(500).send('Synthesis failed.'); }
 });
 
-// AI Job Matching API
-app.post('/api/match-job', verifyAuth, async (req, res) => {
-    const { jobDescription } = req.body;
-    const candidates = await Profile.find().sort({ createdAt: -1 }).limit(50);
-    const candidateData = candidates.map(c => ({ id: c._id, email: c.userEmail, profile: c.generatedProfile }));
-
-    const matchPrompt = `
-    You are an AI Recruitment Engine. Read the following Job Description and student profiles.
-    Find top 3 best-matching students. 
-    Return strictly JSON: { "matches": [ { "candidateId": "id_here", "email": "email_here", "matchPercentage": 90, "reason": "Short reason" } ] }
-    Job Description: ${jobDescription}
-    Candidates: ${JSON.stringify(candidateData)}
-    `;
-
-    try {
-        const completion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: matchPrompt }],
-            model: "llama-3.3-70b-versatile",
-            response_format: { type: "json_object" }
-        });
-        res.json(JSON.parse(completion.choices[0].message.content));
-    } catch (error) { res.status(500).send('Matching failed.'); }
-});
-
-app.listen(5000, () => console.log(`🚀 Groq-Powered Backend on http://localhost:5000`));
+app.listen(5000, () => console.log(`🚀 Server on http://localhost:5000`));
