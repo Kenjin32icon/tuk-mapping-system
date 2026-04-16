@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Users, AlertTriangle, Briefcase, TrendingUp, Search, UserCheck, Loader2 } from 'lucide-react';
-import { auth } from '../../firebase'; // ⬅️ UPDATED PATH (Two folders up)
+import { auth } from '../../firebase'; // ⬅️ Correct path! Two folders up.
 
 export default function AdminDashboardView() {
   const [activeTab, setActiveTab] = useState('overview');
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Fetch live student data when dashboard loads
   useEffect(() => {
     const fetchStudents = async () => {
       setLoading(true);
@@ -34,7 +33,6 @@ export default function AdminDashboardView() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
-      {/* Admin Header */}
       <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold mb-2 flex items-center gap-3">Institutional Control Center</h2>
@@ -45,7 +43,6 @@ export default function AdminDashboardView() {
         </div>
       </div>
 
-      {/* Tabs Navigation */}
       <div className="flex gap-2 overflow-x-auto pb-2">
         {['overview', 'directory', 'job_matching'].map((tab) => (
           <button 
@@ -58,7 +55,6 @@ export default function AdminDashboardView() {
         ))}
       </div>
 
-      {/* TAB CONTENT: Overview / KPIs */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -87,14 +83,13 @@ export default function AdminDashboardView() {
         </div>
       )}
 
-      {/* TAB CONTENT: Live Student Directory */}
       {activeTab === 'directory' && (
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
             <h3 className="font-bold text-slate-800">Student Talent Database</h3>
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-              <input type="text" placeholder="Search skills or names..." className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-sm focus:border-emerald-500 outline-none" />
+              <input type="text" placeholder="Search skills..." className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-sm focus:border-emerald-500 outline-none" />
             </div>
           </div>
           
@@ -140,7 +135,6 @@ export default function AdminDashboardView() {
         </div>
       )}
 
-      {/* TAB CONTENT: Job Matching Workflow */}
       {activeTab === 'job_matching' && (
         <div className="grid md:grid-cols-2 gap-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
