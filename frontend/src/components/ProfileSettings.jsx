@@ -1,14 +1,50 @@
-import React, { useState } from 'react';
-import { Mail, Shield, Save, Settings } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { Mail, Shield, Save, Settings, Loader2 } from 'lucide-react';
+import { auth } from '../firebase'; // Adjust path if needed
 
 export default function ProfileSettings({ user, isAdmin }) {
   const [phone, setPhone] = useState('');
   const [portfolio, setPortfolio] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleSave = (e) => {
+  // Fetch current settings on load
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const response = await axios.get('http://localhost:5000/api/user-settings', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setPhone(response.data.phone || '');
+        setPortfolio(response.data.portfolio || '');
+      } catch (error) {
+        console.error("Failed to load settings");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  const handleSave = async (e) => {
     e.preventDefault();
-    alert("Settings saved successfully! (Backend integration pending)");
+    setIsSaving(true);
+    try {
+      const token = await auth.currentUser.getIdToken();
+      await axios.post('http://localhost:5000/api/update-settings', { phone, portfolio }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert("Settings saved successfully!");
+    } catch (error) {
+      alert("Failed to save settings.");
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  if (isLoading) return <div className="text-center p-10 text-slate-500">Loading settings...</div>;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500">
@@ -57,8 +93,9 @@ export default function ProfileSettings({ user, isAdmin }) {
           </div>
 
           <div className="flex justify-end pt-4 border-t border-slate-100">
-            <button type="submit" className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center gap-2">
-              <Save className="w-4 h-4" /> Save Changes
+            <button type="submit" disabled={isSaving} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center gap-2 disabled:opacity-50">
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {isSaving ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>
