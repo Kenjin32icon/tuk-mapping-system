@@ -194,7 +194,7 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
         
         const pastProfiles = history.map(doc => doc.generatedProfile);
         const synthesisPrompt = `You are an elite Career Strategist in Nairobi. Synthesize these analyses into ONE master profile.
-        Strictly output JSON: { "bio": "...", "skills": { "technical": [], "soft": [], "transferable": [] }, "kenyan_market_alignment": { "best_skill_area_expertise": "...", "description": "...", "service_potentiality_score": 85, "market_readiness_score": 78, "skill_scarcity_index": "High" }, "sector_demand": [ { "sector": "FinTech", "demand_percentage": 90 } ], "recommended_role": { "title": "...", "description": "..." }, "marketable_services": [ { "service_name": "...", "demand_score": 90, "description": "..." } ] }
+        Strictly output JSON. 
         Data: ${JSON.stringify(pastProfiles)}`;
 
         const completion = await groq.chat.completions.create({
@@ -207,27 +207,20 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
         const consolidatedProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
         
         // Save the consolidated profile to the User document
-        await User.findOneAndUpdate(
+        const updatedUser = await User.findOneAndUpdate(
             { firebaseUid: req.user.uid }, 
-            { masterProfile: consolidatedProfile }
+            { masterProfile: consolidatedProfile },
+            { new: true } 
         );
 
-        res.json(consolidatedProfile);
-    } catch (e) { res.status(500).send('Synthesis failed.'); }
-});
+        // FIXED: Trigger the Google Sheets sync
+        syncToGoogleSheets(updatedUser).catch(err => console.error("Google Sheets Sync failed:", err));
 
-app.post('/api/generate-portfolio', verifyAuth, aiLimiter, async (req, res) => {
-    const { masterProfile, serviceName, serviceDescription } = req.body;
-    const portfolioPrompt = `Recruiter Persona. Design 3 projects for: "${serviceName}". Profile: ${JSON.stringify(masterProfile)}. Strictly valid JSON.`;
-    try {
-        const completion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: portfolioPrompt }],
-            model: "llama-3.3-70b-versatile",
-            temperature: 0.4,
-            response_format: { type: "json_object" }
-        });
-        res.json(JSON.parse(jsonrepair(completion.choices[0].message.content)));
-    } catch (error) { res.status(500).send('Portfolio generation failed.'); }
+        res.json(consolidatedProfile);
+    } catch (e) { 
+        console.error(e);
+        res.status(500).send('Synthesis failed.'); 
+    }
 });
 
 // ** UPDATED ADMIN ROUTE: Match jobs against the Master Profiles **
