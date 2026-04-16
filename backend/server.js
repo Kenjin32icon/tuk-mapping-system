@@ -49,6 +49,7 @@ const UserSchema = new mongoose.Schema({
     institution: { type: String, default: 'Unassigned' },
     phone: { type: String, default: '' },
     portfolio: { type: String, default: '' },
+    masterProfile: { type: Object, default: null }, // ⬅️ NEW: The Single Source of Truth
     createdAt: { type: Date, default: Date.now }
 });
 const User = mongoose.model('User', UserSchema);
@@ -124,24 +125,26 @@ app.post('/api/update-settings', verifyAuth, async (req, res) => {
     } catch (error) { res.status(500).send('Error updating settings'); }
 });
 
-// ** NEW ADMIN ROUTE: Fetch Student Directory **
+// ** UPDATED ADMIN ROUTE: Fetch Student Directory from SSOT **
 app.get('/api/admin/students', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN']), async (req, res) => {
     try {
-        const profiles = await Profile.find().sort({ createdAt: -1 });
-        const studentData = profiles.map(p => ({
-            id: p._id,
-            name: p.userName,
-            email: p.userEmail,
-            role: p.generatedProfile?.recommended_role?.title || 'Pending Analysis',
-            readiness: p.generatedProfile?.kenyan_market_alignment?.market_readiness_score || 0,
-            bestSector: p.generatedProfile?.kenyan_market_alignment?.best_skill_area_expertise || 'N/A',
-            date: p.createdAt
+        // Only fetch students who have generated a Master Profile
+        const students = await User.find({ role: 'STUDENT', masterProfile: { $ne: null } }).sort({ createdAt: -1 });
+        
+        const studentData = students.map(u => ({
+            id: u._id,
+            name: u.name,
+            email: u.email,
+            phone: u.phone,
+            role: u.masterProfile?.recommended_role?.title || 'Unassigned',
+            readiness: u.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0,
+            bestSector: u.masterProfile?.kenyan_market_alignment?.best_skill_area_expertise || 'N/A',
+            date: u.createdAt
         }));
         res.json(studentData);
     } catch (error) { res.status(500).send('Failed to fetch student directory.'); }
 });
 
-// AI Core Routes (Preserved Logic)
 app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).send('No documents.');
     try {
@@ -176,18 +179,33 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
     finally { req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); }); }
 });
 
+// ** UPDATED SSOT ROUTE: Save synthesized profile to the User document **
 app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     try {
         const history = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
         if (history.length < 2) return res.status(400).send("Need 2+ documents.");
+        
         const pastProfiles = history.map(doc => doc.generatedProfile);
-        const synthesisPrompt = `Synthesize these profiles into a Master Profile for the Kenyan market. Data: ${JSON.stringify(pastProfiles)}`;
+        const synthesisPrompt = `You are an elite Career Strategist in Nairobi. Synthesize these analyses into ONE master profile.
+        Strictly output JSON: { "bio": "...", "skills": { "technical": [], "soft": [], "transferable": [] }, "kenyan_market_alignment": { "best_skill_area_expertise": "...", "description": "...", "service_potentiality_score": 85, "market_readiness_score": 78, "skill_scarcity_index": "High" }, "sector_demand": [ { "sector": "FinTech", "demand_percentage": 90 } ], "recommended_role": { "title": "...", "description": "..." }, "marketable_services": [ { "service_name": "...", "demand_score": 90, "description": "..." } ] }
+        Data: ${JSON.stringify(pastProfiles)}`;
+
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: synthesisPrompt }],
             model: "llama-3.3-70b-versatile",
+            temperature: 0.4,
             response_format: { type: "json_object" }
         });
-        res.json(JSON.parse(jsonrepair(completion.choices[0].message.content)));
+        
+        const consolidatedProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
+        
+        // Save the consolidated profile to the User document
+        await User.findOneAndUpdate(
+            { firebaseUid: req.user.uid }, 
+            { masterProfile: consolidatedProfile }
+        );
+
+        res.json(consolidatedProfile);
     } catch (e) { res.status(500).send('Synthesis failed.'); }
 });
 
@@ -205,11 +223,22 @@ app.post('/api/generate-portfolio', verifyAuth, aiLimiter, async (req, res) => {
     } catch (error) { res.status(500).send('Portfolio generation failed.'); }
 });
 
+// ** UPDATED ADMIN ROUTE: Match jobs against the Master Profiles **
 app.post('/api/match-job', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN']), async (req, res) => {
     const { jobDescription } = req.body;
-    const candidates = await Profile.find().sort({ createdAt: -1 }).limit(50);
-    const candidateData = candidates.map(c => ({ id: c._id, email: c.userEmail, profile: c.generatedProfile }));
-    const matchPrompt = `Find top 3 best-matching students for: ${jobDescription}. Candidates: ${JSON.stringify(candidateData)}`;
+    
+    // Match against the Master Profiles, not single uploads
+    const students = await User.find({ role: 'STUDENT', masterProfile: { $ne: null } });
+    const candidateData = students.map(u => ({ 
+        id: u._id, 
+        email: u.email, 
+        name: u.name,
+        profile: u.masterProfile 
+    }));
+
+    const matchPrompt = `You are an AI Recruitment Engine. Find top 3 best-matching students for this job. Return JSON: { "matches": [ { "candidateId": "id_here", "name": "name_here", "email": "email_here", "matchPercentage": 90, "reason": "Short reason why they fit" } ] }
+    Job Description: ${jobDescription}\nCandidates: ${JSON.stringify(candidateData)}`;
+    
     try {
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: matchPrompt }],
