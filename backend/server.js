@@ -16,30 +16,30 @@ const rateLimit = require('express-rate-limit');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Initialize Firebase Admin (Load from Env Var for Security)
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
-
+// --- RENDER DEPLOYMENT CRITICAL FIX: FIREBASE INIT ---
 try {
     if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
         throw new Error("Missing FIREBASE_SERVICE_ACCOUNT environment variable.");
     }
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-    console.log("✅ Firebase Admin Initialized");
+    
+    // Fix Render newline escaping issue for private keys
+    const rawFirebaseEnv = process.env.FIREBASE_SERVICE_ACCOUNT.replace(/\\n/g, '\n');
+    const serviceAccount = JSON.parse(rawFirebaseEnv);
+    
+    if (!admin.apps.length) {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        console.log("✅ Firebase Admin Initialized");
+    }
 } catch (error) {
     console.error("❌ Firebase Init Error:", error.message);
-    // On Render, you don't want the app to crash immediately, but you need this fixed.
 }
 
 const app = express();
 
 app.use(cors({
-    origin: [process.env.FRONTEND_URL || 'http://localhost:5173'].filter(Boolean), 
+    origin: [process.env.FRONTEND_URL || 'http://localhost:5173', 'https://tuk-talent-portal.vercel.app'].filter(Boolean), 
     methods: ['GET', 'POST', 'PUT'],
     credentials: true
 }));
@@ -131,12 +131,11 @@ app.post('/api/sync-user', verifyAuth, async (req, res) => {
         const { email, name } = req.user; 
         let dbUser = await User.findOne({ firebaseUid: req.user.uid });
         if (!dbUser) {
-            // Your specific email logic
             const assignedRole = (email === 'kariukilewis04@students.tukenya.ac.ke') ? 'SUPER_ADMIN' : 'STUDENT';
             dbUser = new User({ firebaseUid: req.user.uid, email, name: name || 'User', role: assignedRole });
             await dbUser.save();
         }
-        res.json({ role: dbUser.role, institution: dbUser.institution });
+        res.json({ role: dbUser.role, institution: dbUser.institution, masterProfile: dbUser.masterProfile });
     } catch (error) { res.status(500).send('Error syncing user.'); }
 });
 
@@ -177,6 +176,7 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
         console.error("Analysis Error: ", error);
         res.status(500).json({ error: 'Analysis failed.' }); 
     } finally { 
+        // Handles Render's ephemeral storage cleanup successfully
         req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); }); 
     }
 });
@@ -217,8 +217,11 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
 async function syncToGoogleSheets(studentData) {
     if (!process.env.GOOGLE_SHEETS_KEY || !process.env.SPREADSHEET_ID) return;
     try {
+        // Fix Render newline escaping issue for private keys
+        const rawGoogleSheetsEnv = process.env.GOOGLE_SHEETS_KEY.replace(/\\n/g, '\n');
+        
         const auth = new google.auth.GoogleAuth({
-            credentials: JSON.parse(process.env.GOOGLE_SHEETS_KEY),
+            credentials: JSON.parse(rawGoogleSheetsEnv),
             scopes: ['https://www.googleapis.com/auth/spreadsheets']
         });
         const sheets = google.sheets({ version: 'v4', auth });
@@ -238,7 +241,6 @@ async function syncToGoogleSheets(studentData) {
     } catch (e) { console.error('Sheets Sync Failed:', e.message); }
 }
 
-// --- RENDER DEPLOYMENT CRITICAL FIX ---
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
