@@ -12,6 +12,7 @@ const mammoth = require('mammoth');
 const { jsonrepair } = require('jsonrepair'); 
 const admin = require('firebase-admin');     
 const { google } = require('googleapis'); 
+const rateLimit = require('express-rate-limit');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -21,11 +22,24 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
 
+try {
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+        throw new Error("Missing FIREBASE_SERVICE_ACCOUNT environment variable.");
+    }
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+    console.log("✅ Firebase Admin Initialized");
+} catch (error) {
+    console.error("❌ Firebase Init Error:", error.message);
+    // On Render, you don't want the app to crash immediately, but you need this fixed.
+}
+
 const app = express();
 
-// CORRECTION: Allowed Vercel and Localhost for development/production parity
 app.use(cors({
-    origin: [process.env.FRONTEND_URL, 'http://localhost:5173'], 
+    origin: [process.env.FRONTEND_URL, 'http://localhost:5173'].filter(Boolean), 
     methods: ['GET', 'POST', 'PUT'],
     credentials: true
 }));

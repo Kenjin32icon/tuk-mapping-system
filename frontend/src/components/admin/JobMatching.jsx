@@ -14,7 +14,7 @@ export default function JobMatching() {
     setIsMatching(true);
     try {
       const token = await auth.currentUser.getIdToken();
-      const response = await axios.post('http://localhost:5000/api/match-job', { jobDescription: jd }, {
+      const response = await axios.post('https://tuk-mapping-system.onrender.com/api/match-job', { jobDescription: jd }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMatches(response.data.matches);

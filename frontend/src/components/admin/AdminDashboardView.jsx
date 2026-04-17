@@ -18,7 +18,7 @@ export default function AdminDashboardView() {
       setLoading(true);
       try {
         const token = await auth.currentUser.getIdToken();
-        const response = await axios.get('http://localhost:5000/api/admin/students', {
+        const response = await axios.get('https://tuk-mapping-system.onrender.com/api/admin/students', {
           headers: { Authorization: `Bearer ${token}` }
         });
         setStudents(response.data);

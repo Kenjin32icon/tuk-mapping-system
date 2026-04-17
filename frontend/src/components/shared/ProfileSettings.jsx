@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Mail, Shield, Save, Settings, Loader2 } from 'lucide-react';
-import { auth } from '../../firebase'; // ⬅️ UPDATED PATH (Two folders up)
+import { auth } from '../../firebase'; 
+import { toast } from 'react-hot-toast';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function ProfileSettings({ user, isAdmin }) {
   const [phone, setPhone] = useState('');
@@ -9,18 +12,19 @@ export default function ProfileSettings({ user, isAdmin }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch current settings on load
   useEffect(() => {
     const fetchSettings = async () => {
       try {
         const token = await auth.currentUser.getIdToken();
-        const response = await axios.get('http://localhost:5000/api/user-settings', {
+        // FIXED: Using backticks for template literal
+        const response = await axios.get(`${API_BASE_URL}/api/user-settings`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setPhone(response.data.phone || '');
         setPortfolio(response.data.portfolio || '');
       } catch (error) {
         console.error("Failed to load settings");
+        toast.error("Failed to load your profile settings.");
       } finally {
         setIsLoading(false);
       }
@@ -33,12 +37,13 @@ export default function ProfileSettings({ user, isAdmin }) {
     setIsSaving(true);
     try {
       const token = await auth.currentUser.getIdToken();
-      await axios.post('http://localhost:5000/api/update-settings', { phone, portfolio }, {
+      // FIXED: Unified API_BASE_URL usage
+      await axios.post(`${API_BASE_URL}/api/update-settings`, { phone, portfolio }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert("Settings saved successfully!");
+      toast.success("Settings saved successfully!");
     } catch (error) {
-      alert("Failed to save settings.");
+      toast.error("Failed to save settings.");
     } finally {
       setIsSaving(false);
     }
@@ -54,7 +59,12 @@ export default function ProfileSettings({ user, isAdmin }) {
         </h2>
 
         <div className="flex items-center gap-6 mb-8 p-6 bg-slate-50 rounded-2xl border border-slate-100">
-          <img src={user?.photoURL} alt="Avatar" className="w-20 h-20 rounded-full border-4 border-white shadow-sm" crossOrigin="anonymous"/>
+          <img 
+            src={user?.photoURL} 
+            alt="Avatar" 
+            className="w-20 h-20 rounded-full border-4 border-white shadow-sm" 
+            crossOrigin="anonymous"
+          />
           <div>
             <h3 className="text-xl font-bold text-slate-800">{user?.displayName}</h3>
             <p className="text-slate-500 flex items-center gap-2 mt-1">
@@ -93,7 +103,11 @@ export default function ProfileSettings({ user, isAdmin }) {
           </div>
 
           <div className="flex justify-end pt-4 border-t border-slate-100">
-            <button type="submit" disabled={isSaving} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center gap-2 disabled:opacity-50">
+            <button 
+                type="submit" 
+                disabled={isSaving} 
+                className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {isSaving ? 'Saving...' : 'Save Changes'}
             </button>
