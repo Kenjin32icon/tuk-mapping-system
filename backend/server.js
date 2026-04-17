@@ -22,9 +22,11 @@ try {
         throw new Error("Missing FIREBASE_SERVICE_ACCOUNT environment variable.");
     }
     
-    // Fix Render newline escaping issue for private keys
-    const rawFirebaseEnv = process.env.FIREBASE_SERVICE_ACCOUNT.replace(/\\n/g, '\n');
-    const serviceAccount = JSON.parse(rawFirebaseEnv);
+    // 1. Parse the JSON first
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    
+    // 2. Fix Render newline escaping issue specifically on the private_key property
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     
     if (!admin.apps.length) {
         admin.initializeApp({
@@ -217,11 +219,12 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
 async function syncToGoogleSheets(studentData) {
     if (!process.env.GOOGLE_SHEETS_KEY || !process.env.SPREADSHEET_ID) return;
     try {
-        // Fix Render newline escaping issue for private keys
-        const rawGoogleSheetsEnv = process.env.GOOGLE_SHEETS_KEY.replace(/\\n/g, '\n');
+        // Parse JSON first, then fix the private key
+        const sheetCredentials = JSON.parse(process.env.GOOGLE_SHEETS_KEY);
+        sheetCredentials.private_key = sheetCredentials.private_key.replace(/\\n/g, '\n');
         
         const auth = new google.auth.GoogleAuth({
-            credentials: JSON.parse(rawGoogleSheetsEnv),
+            credentials: sheetCredentials,
             scopes: ['https://www.googleapis.com/auth/spreadsheets']
         });
         const sheets = google.sheets({ version: 'v4', auth });
