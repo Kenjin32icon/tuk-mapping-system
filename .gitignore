@@ -7,3 +7,4 @@ backend/package.json
 backend/.env
 backend/.gitignore
 backend/serviceAccountKey.json
+backend/node_modules
