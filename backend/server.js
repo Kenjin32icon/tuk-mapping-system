@@ -39,7 +39,7 @@ try {
 const app = express();
 
 app.use(cors({
-    origin: [process.env.FRONTEND_URL, 'http://localhost:5173'].filter(Boolean), 
+    origin: [process.env.FRONTEND_URL || 'http://localhost:5173'].filter(Boolean), 
     methods: ['GET', 'POST', 'PUT'],
     credentials: true
 }));
@@ -48,13 +48,17 @@ app.use(express.json());
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
-// --- DATABASE SCHEMAS ---
-// CORRECTION: Database connectivity via Environment Variables
-const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/tuk-mapping';
-mongoose.connect(mongoURI)
-  .then(() => console.log('✅ Connected to MongoDB Atlas'))
-  .catch(err => console.error('❌ MongoDB error:', err));
+// --- DATABASE ---
+const mongoURI = process.env.MONGODB_URI;
+if (!mongoURI) {
+    console.error("❌ MONGODB_URI is not defined in environment variables.");
+} else {
+    mongoose.connect(mongoURI)
+      .then(() => console.log('✅ Connected to MongoDB Atlas'))
+      .catch(err => console.error('❌ MongoDB connection error:', err));
+}
 
+// --- SCHEMAS ---
 const UserSchema = new mongoose.Schema({
     firebaseUid: { type: String, required: true, unique: true },
     email: { type: String, required: true },
@@ -67,7 +71,7 @@ const UserSchema = new mongoose.Schema({
     institution: { type: String, default: 'Unassigned' },
     phone: { type: String, default: '' },
     portfolio: { type: String, default: '' },
-    masterProfile: { type: Object, default: null }, // ⬅️ NEW: The Single Source of Truth
+    masterProfile: { type: Object, default: null }, 
     createdAt: { type: Date, default: Date.now }
 });
 const User = mongoose.model('User', UserSchema);
@@ -82,7 +86,11 @@ const ProfileSchema = new mongoose.Schema({
 const Profile = mongoose.model('Profile', ProfileSchema);
 
 // --- MIDDLEWARE ---
-const aiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: "Too many requests." });
+const aiLimiter = rateLimit({ 
+    windowMs: 15 * 60 * 1000, 
+    max: 15, 
+    message: { error: "Too many requests. Please try again later." } 
+});
 
 const verifyAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -92,7 +100,10 @@ const verifyAuth = async (req, res, next) => {
         const decodedToken = await admin.auth().verifyIdToken(token);
         req.user = decodedToken;
         next();
-    } catch (error) { res.status(403).send('Invalid Token'); }
+    } catch (error) { 
+        console.error("Auth Error:", error.message);
+        res.status(403).send('Invalid Token'); 
+    }
 };
 
 const requireRole = (allowedRoles) => {
@@ -107,60 +118,26 @@ const requireRole = (allowedRoles) => {
 };
 
 const upload = multer({ 
-    storage: multer.diskStorage({
-        destination: (req, file, cb) => cb(null, 'uploads/'),
-        filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
-    })
+    dest: 'uploads/',
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
 // --- ROUTES ---
+
+app.get('/', (req, res) => res.send("TUK Mapping API is Running")); // Health check for Render
 
 app.post('/api/sync-user', verifyAuth, async (req, res) => {
     try {
         const { email, name } = req.user; 
         let dbUser = await User.findOne({ firebaseUid: req.user.uid });
         if (!dbUser) {
+            // Your specific email logic
             const assignedRole = (email === 'kariukilewis04@students.tukenya.ac.ke') ? 'SUPER_ADMIN' : 'STUDENT';
             dbUser = new User({ firebaseUid: req.user.uid, email, name: name || 'User', role: assignedRole });
             await dbUser.save();
         }
         res.json({ role: dbUser.role, institution: dbUser.institution });
     } catch (error) { res.status(500).send('Error syncing user.'); }
-});
-
-app.get('/api/user-settings', verifyAuth, async (req, res) => {
-    try {
-        const dbUser = await User.findOne({ firebaseUid: req.user.uid });
-        res.json({ phone: dbUser?.phone || '', portfolio: dbUser?.portfolio || '' });
-    } catch (error) { res.status(500).send('Error fetching settings'); }
-});
-
-app.post('/api/update-settings', verifyAuth, async (req, res) => {
-    try {
-        const { phone, portfolio } = req.body;
-        const updatedUser = await User.findOneAndUpdate({ firebaseUid: req.user.uid }, { phone, portfolio }, { new: true });
-        res.json({ success: true, phone: updatedUser.phone, portfolio: updatedUser.portfolio });
-    } catch (error) { res.status(500).send('Error updating settings'); }
-});
-
-// ** UPDATED ADMIN ROUTE: Fetch Student Directory from SSOT **
-app.get('/api/admin/students', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN']), async (req, res) => {
-    try {
-        // Only fetch students who have generated a Master Profile
-        const students = await User.find({ role: 'STUDENT', masterProfile: { $ne: null } }).sort({ createdAt: -1 });
-        
-        const studentData = students.map(u => ({
-            id: u._id,
-            name: u.name,
-            email: u.email,
-            phone: u.phone,
-            role: u.masterProfile?.recommended_role?.title || 'Unassigned',
-            readiness: u.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0,
-            bestSector: u.masterProfile?.kenyan_market_alignment?.best_skill_area_expertise || 'N/A',
-            date: u.createdAt
-        }));
-        res.json(studentData);
-    } catch (error) { res.status(500).send('Failed to fetch student directory.'); }
 });
 
 app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
@@ -178,12 +155,15 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
             }
             combinedText += `\n--- DOC: ${file.originalname} ---\n${text}`;
         }
-        const aiPrompt = `Analyze student profile: ${combinedText.substring(0, 15000)}`;
+        
+        const aiPrompt = `Analyze this student profile and return a detailed JSON report. Focus on skills, potential career paths in Kenya, and market readiness: ${combinedText.substring(0, 12000)}`;
+        
         const completion = await groq.chat.completions.create({
-            messages: [{ role: "system", content: "Reply strictly in JSON." }, { role: "user", content: aiPrompt }],
+            messages: [{ role: "system", content: "Reply strictly in valid JSON." }, { role: "user", content: aiPrompt }],
             model: "llama-3.3-70b-versatile",
             response_format: { type: "json_object" }
         });
+        
         const generatedProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
         const newProfile = new Profile({
             userId: req.user.uid,
@@ -195,40 +175,36 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
         res.json(generatedProfile);
     } catch (error) { 
         console.error("Analysis Error: ", error);
-        res.status(500).json({ error: 'Analysis failed. Please ensure your documents contain readable text and try again.' }); 
+        res.status(500).json({ error: 'Analysis failed.' }); 
+    } finally { 
+        req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); }); 
     }
-    finally { req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); }); }
 });
 
-// ** UPDATED SSOT ROUTE: Save synthesized profile to the User document **
 app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     try {
         const history = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
-        if (history.length < 2) return res.status(400).send("Need 2+ documents.");
+        if (history.length < 2) return res.status(400).send("Need at least 2 document analyses to synthesize.");
         
         const pastProfiles = history.map(doc => doc.generatedProfile);
-        const synthesisPrompt = `You are an elite Career Strategist in Nairobi. Synthesize these analyses into ONE master profile.
-        Strictly output JSON. 
-        Data: ${JSON.stringify(pastProfiles)}`;
+        const synthesisPrompt = `Synthesize these analyses into ONE master profile for a student in Nairobi. Return JSON with 'recommended_role' (object with 'title') and 'kenyan_market_alignment' (object with 'market_readiness_score'). Data: ${JSON.stringify(pastProfiles)}`;
 
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: synthesisPrompt }],
             model: "llama-3.3-70b-versatile",
-            temperature: 0.4,
             response_format: { type: "json_object" }
         });
         
         const consolidatedProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
         
-        // Save the consolidated profile to the User document
         const updatedUser = await User.findOneAndUpdate(
             { firebaseUid: req.user.uid }, 
             { masterProfile: consolidatedProfile },
             { new: true } 
         );
 
-        // FIXED: Trigger the Google Sheets sync
-        syncToGoogleSheets(updatedUser).catch(err => console.error("Google Sheets Sync failed:", err));
+        // Run sync in background
+        syncToGoogleSheets(updatedUser).catch(err => console.error("Sheets Sync Error:", err));
 
         res.json(consolidatedProfile);
     } catch (e) { 
@@ -237,55 +213,33 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     }
 });
 
-// ** UPDATED ADMIN ROUTE: Match jobs against the Master Profiles **
-app.post('/api/match-job', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN']), async (req, res) => {
-    const { jobDescription } = req.body;
-    
-    // Match against the Master Profiles, not single uploads
-    const students = await User.find({ role: 'STUDENT', masterProfile: { $ne: null } });
-    const candidateData = students.map(u => ({ 
-        id: u._id, 
-        email: u.email, 
-        name: u.name,
-        profile: u.masterProfile 
-    }));
-
-    const matchPrompt = `You are an AI Recruitment Engine. Find top 3 best-matching students for this job. Return JSON: { "matches": [ { "candidateId": "id_here", "name": "name_here", "email": "email_here", "matchPercentage": 90, "reason": "Short reason why they fit" } ] }
-    Job Description: ${jobDescription}\nCandidates: ${JSON.stringify(candidateData)}`;
-    
-    try {
-        const completion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: matchPrompt }],
-            model: "llama-3.3-70b-versatile",
-            response_format: { type: "json_object" }
-        });
-        res.json(JSON.parse(completion.choices[0].message.content));
-    } catch (error) { res.status(500).send('Matching failed.'); }
-});
-
-// CORRECTION: Google Sheets Sync Trigger
+// --- GOOGLE SHEETS SYNC FIX ---
 async function syncToGoogleSheets(studentData) {
+    if (!process.env.GOOGLE_SHEETS_KEY || !process.env.SPREADSHEET_ID) return;
     try {
         const auth = new google.auth.GoogleAuth({
             credentials: JSON.parse(process.env.GOOGLE_SHEETS_KEY),
             scopes: ['https://www.googleapis.com/auth/spreadsheets']
         });
         const sheets = google.sheets({ version: 'v4', auth });
+        
+        // Match the data structure from your synthesis prompt
+        const role = studentData.masterProfile?.recommended_role?.title || "N/A";
+        const score = studentData.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0;
+
         await sheets.spreadsheets.values.append({
             spreadsheetId: process.env.SPREADSHEET_ID,
             range: 'Sheet1!A:E',
             valueInputOption: 'USER_ENTERED',
             requestBody: {
-                values: [[
-                    studentData.name, 
-                    studentData.email, 
-                    studentData.masterProfile.recommended_role.title, 
-                    studentData.masterProfile.readiness_score
-                ]]
+                values: [[ studentData.name, studentData.email, role, score, new Date().toISOString() ]]
             }
         });
-    } catch (e) { console.error('Sheets Sync Failed', e); }
+    } catch (e) { console.error('Sheets Sync Failed:', e.message); }
 }
 
-
+// --- RENDER DEPLOYMENT CRITICAL FIX ---
 const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+});
