@@ -21,6 +21,7 @@ import PortfolioView from './components/student/PortfolioView';
 // Admin Components
 import AdminDashboardView from './components/admin/AdminDashboardView';
 
+// Ensure this matches your Render URL when deployed
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // --- MOCK DATA FOR GUEST MODE ---
@@ -47,14 +48,10 @@ function App() {
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [isGeneratingPortfolio, setIsGeneratingPortfolio] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
-
-  // FIX: Added state variable to handle Render Cold-Start/Identity Syncing
   const [isAuthSyncing, setIsAuthSyncing] = useState(true);
 
-  // FIX: Updated auth listener to sync user identity and role from backend
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      // Don't run production sync if user is manually exploring in Guest Mode
       if (isGuest) {
         setIsAuthSyncing(false);
         return;
@@ -63,11 +60,10 @@ function App() {
       setUser(currentUser);
       
       if (currentUser) {
-        setIsAuthSyncing(true); // START LOADING SPINNER
+        setIsAuthSyncing(true); 
         try {
           const token = await currentUser.getIdToken();
           
-          // Securely sync identity with Render Backend
           const response = await axios.post(`${API_BASE_URL}/api/sync-user`, {}, {
             headers: { Authorization: `Bearer ${token}` }
           });
@@ -76,7 +72,6 @@ function App() {
           setUserRole(role);
           setMasterProfile(existingProfile);
 
-          // Route to specific dashboards based on Backend Role
           if (role === 'SUPER_ADMIN') {
             setView('dev_dashboard');
           } else if (role === 'UNIVERSITY_ADMIN') {
@@ -84,7 +79,6 @@ function App() {
           } else if (role === 'GOVT_ADMIN') {
             setView('govt_dashboard');
           } else {
-            // Default Student routing
             setView(existingProfile ? 'dashboard' : 'onboarding');
           }
 
@@ -93,18 +87,17 @@ function App() {
           toast.error("Connection timeout. Please refresh or try again in a moment.");
           setView('landing'); 
         } finally {
-          setIsAuthSyncing(false); // STOP LOADING SPINNER
+          setIsAuthSyncing(false); 
         }
       } else {
         setView('landing');
         setUserRole(null);
-        setIsAuthSyncing(false); // STOP LOADING SPINNER
+        setIsAuthSyncing(false);
       }
     });
     return () => unsubscribe();
   }, [isGuest]);
 
-  // UI Handlers
   const handleLogout = () => {
     signOut(auth);
     setIsGuest(false);
@@ -121,8 +114,7 @@ function App() {
     setView('dashboard');
   };
 
-const handleGenerateMasterProfile = async () => {
-    // Check if user is logged in
+  const handleGenerateMasterProfile = async () => {
     if (!user) {
         return toast.error("Please sign in with Google to use AI synthesis.");
     }
@@ -136,11 +128,9 @@ const handleGenerateMasterProfile = async () => {
       });
       setMasterProfile(response.data);
       
-      // FIXED: Replaced alert with toast
       toast.success("Master Profile generated successfully!"); 
       setView('dashboard'); 
     } catch (error) {
-      // FIXED: Replaced alert with toast
       toast.error("Could not generate Master Profile. Ensure you have 2+ documents uploaded."); 
       setView('dashboard');
     } finally {
@@ -153,10 +143,13 @@ const handleGenerateMasterProfile = async () => {
     setIsGeneratingPortfolio(true);
     setView('processing');
     try {
+      const token = await user.getIdToken();
       const res = await axios.post(`${API_BASE_URL}/api/generate-portfolio`, {
         masterProfile,
         serviceName: service.service_name,
         serviceDescription: service.description
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       setPortfolioData(res.data);
       setView('module_portfolio');
@@ -180,9 +173,6 @@ const handleGenerateMasterProfile = async () => {
     html2pdf().from(element).set(opt).save();
   };
 
-  // --- RENDERING LOGIC ---
-
-  // FIX: Render "Waking up" screen if waiting for backend response (Causes 1, 2, 3)
   if (isAuthSyncing) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
@@ -204,7 +194,7 @@ const handleGenerateMasterProfile = async () => {
       
       <Navbar 
         user={user} 
-        isAdmin={userRole === 'SUPER_ADMIN'} 
+        userRole={userRole}
         view={view} 
         setView={setView} 
         handleLogout={handleLogout}
@@ -213,7 +203,7 @@ const handleGenerateMasterProfile = async () => {
       />
 
       <main className="container mx-auto px-4 py-8 max-w-6xl">
-        {view === 'landing' && <LandingView onGuest={enterGuestMode} />}
+        {view === 'landing' && <LandingView onGuestLogin={enterGuestMode} />}
         
         {view === 'onboarding' && (
           <OnboardingView 
