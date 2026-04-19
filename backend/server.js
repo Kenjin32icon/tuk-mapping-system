@@ -74,6 +74,58 @@ const ProfileSchema = new mongoose.Schema({
 });
 const Profile = mongoose.model('Profile', ProfileSchema);
 
+// --- NEW: AUDIT LOG SCHEMA ---
+const SystemLogSchema = new mongoose.Schema({
+    userEmail: { type: String, required: true },
+    action: { type: String, required: true },
+    details: { type: String },
+    timestamp: { type: Date, default: Date.now }
+});
+const SystemLog = mongoose.model('SystemLog', SystemLogSchema);
+
+// Helper function to create logs easily throughout your server
+const createLog = async (email, action, details) => {
+    try { await new SystemLog({ userEmail: email, action, details }).save(); } 
+    catch (err) { console.error("Logging failed", err); }
+};
+
+// ==========================================
+// --- SUPER ADMIN EXCLUSIVE ROUTES ---
+// ==========================================
+
+// 1. Get All Users in the System
+app.get('/api/super/users', verifyAuth, requireRole(['SUPER_ADMIN']), async (req, res) => {
+    try {
+        const users = await User.find().sort({ createdAt: -1 });
+        res.json(users);
+    } catch (error) { res.status(500).send('Failed to fetch global users.'); }
+});
+
+// 2. Change User Role (Privilege Control)
+app.put('/api/super/role', verifyAuth, requireRole(['SUPER_ADMIN']), async (req, res) => {
+    const { userId, newRole } = req.body;
+    try {
+        const targetUser = await User.findById(userId);
+        if (!targetUser) return res.status(404).send('User not found.');
+
+        targetUser.role = newRole;
+        await targetUser.save();
+
+        // Log this critical action
+        await createLog(req.user.email, 'ROLE_UPDATED', `Changed role of ${targetUser.email} to ${newRole}`);
+        
+        res.json({ success: true, message: `Updated ${targetUser.email} to ${newRole}` });
+    } catch (error) { res.status(500).send('Failed to update role.'); }
+});
+
+// 3. Get System Audit Logs
+app.get('/api/super/logs', verifyAuth, requireRole(['SUPER_ADMIN']), async (req, res) => {
+    try {
+        const logs = await SystemLog.find().sort({ timestamp: -1 }).limit(100);
+        res.json(logs);
+    } catch (error) { res.status(500).send('Failed to fetch logs.'); }
+});
+
 // --- MIDDLEWARE ---
 const aiLimiter = rateLimit({ 
     windowMs: 15 * 60 * 1000, 
