@@ -21,13 +21,49 @@ try {
     if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
         throw new Error("Missing FIREBASE_SERVICE_ACCOUNT environment variable.");
     }
-    
-    // 1. Parse the JSON first
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    
-    // 2. Fix Render newline escaping issue specifically on the private_key property
-    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-    
+
+    // Read raw env and normalize
+    let raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
+    let jsonStr = raw;
+
+    // If it doesn't look like JSON, attempt base64 decode (common pattern when storing secrets)
+    if (!jsonStr.startsWith('{')) {
+        try {
+            jsonStr = Buffer.from(jsonStr, 'base64').toString('utf8');
+        } catch (e) {
+            // ignore - we'll try other heuristics below
+        }
+    }
+
+    // Extract the first JSON object block if there is surrounding text
+    const first = jsonStr.indexOf('{');
+    const last = jsonStr.lastIndexOf('}');
+    if (first === -1 || last === -1) {
+        throw new Error('FIREBASE_SERVICE_ACCOUNT does not contain a JSON object.');
+    }
+    jsonStr = jsonStr.substring(first, last + 1);
+
+    // Remove BOM if present
+    if (jsonStr.charCodeAt(0) === 0xFEFF) jsonStr = jsonStr.slice(1);
+
+    // Parse with fallback to jsonrepair when necessary
+    let serviceAccount;
+    try {
+        serviceAccount = JSON.parse(jsonStr);
+    } catch (e) {
+        try {
+            // jsonrepair imported above — helps fix common minor JSON issues
+            serviceAccount = JSON.parse(jsonrepair(jsonStr));
+        } catch (e2) {
+            throw new Error('Failed to parse FIREBASE_SERVICE_ACCOUNT JSON: ' + e2.message);
+        }
+    }
+
+    // Normalize private_key newlines if present
+    if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+
     if (!admin.apps.length) {
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount)
@@ -35,7 +71,10 @@ try {
         console.log("✅ Firebase Admin Initialized");
     }
 } catch (error) {
+    // Avoid leaking secrets: only log non-sensitive diagnostics
+    const rawEnv = process.env.FIREBASE_SERVICE_ACCOUNT || '';
     console.error("❌ Firebase Init Error:", error.message);
+    console.error("FIREBASE_SERVICE_ACCOUNT length:", rawEnv.length, "startsWith{:", rawEnv.trim().startsWith('{'));
 }
 
 const app = express();
