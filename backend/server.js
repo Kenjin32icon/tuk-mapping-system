@@ -15,71 +15,24 @@ const { google } = require('googleapis');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// --- RENDER DEPLOYMENT CRITICAL FIX: FIREBASE INIT ---
-try {
-    if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-        throw new Error("Missing FIREBASE_SERVICE_ACCOUNT environment variable.");
-    }
-
-    // Read raw env and normalize
-    let raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
-    let jsonStr = raw;
-
-    // If it doesn't look like JSON, attempt base64 decode (common pattern when storing secrets)
-    if (!jsonStr.startsWith('{')) {
-        try {
-            jsonStr = Buffer.from(jsonStr, 'base64').toString('utf8');
-        } catch (e) {
-            // ignore - we'll try other heuristics below
-        }
-    }
-
-    // Extract the first JSON object block if there is surrounding text
-    const first = jsonStr.indexOf('{');
-    const last = jsonStr.lastIndexOf('}');
-    if (first === -1 || last === -1) {
-        throw new Error('FIREBASE_SERVICE_ACCOUNT does not contain a JSON object.');
-    }
-    jsonStr = jsonStr.substring(first, last + 1);
-
-    // Remove BOM if present
-    if (jsonStr.charCodeAt(0) === 0xFEFF) jsonStr = jsonStr.slice(1);
-
-    // Parse with fallback to jsonrepair when necessary
-    let serviceAccount;
-    try {
-        serviceAccount = JSON.parse(jsonStr);
-    } catch (e) {
-        try {
-            // jsonrepair imported above — helps fix common minor JSON issues
-            serviceAccount = JSON.parse(jsonrepair(jsonStr));
-        } catch (e2) {
-            throw new Error('Failed to parse FIREBASE_SERVICE_ACCOUNT JSON: ' + e2.message);
-        }
-    }
-
-    // Normalize private_key newlines if present
-    if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
-        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-    }
-
-    if (!admin.apps.length) {
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
-        });
-        console.log("✅ Firebase Admin Initialized");
-    }
-} catch (error) {
-    // Avoid leaking secrets: only log non-sensitive diagnostics
-    const rawEnv = process.env.FIREBASE_SERVICE_ACCOUNT || '';
-    console.error("❌ Firebase Init Error:", error.message);
-    console.error("FIREBASE_SERVICE_ACCOUNT length:", rawEnv.length, "startsWith{:", rawEnv.trim().startsWith('{'));
+// ✅ FIX: Intelligent Firebase Authentication
+let serviceAccount;
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    // If running on Render (Production)
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} else {
+    // If running on Localhost (Development)
+    serviceAccount = require("./serviceAccountKey.json");
 }
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 const app = express();
 
 app.use(cors({
-    origin: [process.env.FRONTEND_URL || 'http://localhost:5173', 'https://tuk-talent-portal.vercel.app'].filter(Boolean), 
+    origin: [process.env.FRONTEND_URL, 'http://localhost:5173', 'https://tuk-frontend-web.vercel.app'], 
     methods: ['GET', 'POST', 'PUT'],
     credentials: true
 }));
