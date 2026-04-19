@@ -8,8 +8,9 @@ export default function LandingView({ onLogin, onGuestLogin }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
       <div className="bg-white p-10 rounded-3xl shadow-xl border border-slate-100 w-full max-w-md text-center">
-        <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-lg flex items-center justify-center text-white shadow-lg">
-   <BrainCircuit className="w-5 h-5" /></div>
+        <div className="w-16 h-16 bg-emerald-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl mx-auto mb-6 shadow-lg">
+          TU
+        </div>
         <h1 className="text-3xl font-extrabold text-slate-900 mb-2">TUK-Skills_Map AI</h1>
         <p className="text-slate-500 mb-8 text-sm leading-relaxed">Empowering students through AI-driven market mapping and portfolio generation.</p>
         
