@@ -21,6 +21,7 @@ import PortfolioView from './components/student/PortfolioView';
 
 // Admin Components
 import AdminDashboardView from './components/admin/AdminDashboardView';
+import DevSuperPanel from './components/admin/DevSuperPanel'; // ⬅️ NEW IMPORT
 
 // Ensure this matches your Render URL when deployed
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -264,7 +265,7 @@ function App() {
         )}
         
         {view === 'admin_dashboard' && <AdminDashboardView />}
-        {view === 'dev_dashboard' && <div className="p-8 bg-white rounded-3xl shadow-xl"><h2>Developer Super-Panel</h2></div>}
+        {view === 'dev_dashboard' && <DevSuperPanel />}
         {view === 'settings' && <ProfileSettings user={user} isAdmin={userRole === 'SUPER_ADMIN'} />}
 
         {view === 'module_skills' && <SkillsModuleView masterProfile={masterProfile} />}
