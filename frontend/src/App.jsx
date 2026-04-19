@@ -1,8 +1,9 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import html2pdf from 'html2pdf.js';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from './firebase';
+import { onAuthStateChanged, signOut, signInWithPopup } from 'firebase/auth'; // ✅ Added signInWithPopup
+import { auth, googleProvider } from './firebase';
 import { Toaster, toast } from 'react-hot-toast';
 
 // Shared Components
@@ -33,22 +34,31 @@ const MOCK_GUEST_PROFILE = {
     transferable: ["Project Management", "Agile Methodologies"]
   },
   kenyan_market_alignment: {
-    market_readiness_score: 85,
-    best_skill_area_expertise: "Full-Stack Development"
-  }
+    best_skill_area_expertise: "Full-Stack Web Development",
+    description: "Your stack aligns perfectly with the high demand in Nairobi's tech hubs.",
+    service_potentiality_score: 85,
+    market_readiness_score: 78,
+    skill_scarcity_index: "Medium"
+  },
+  sector_demand: [
+    { sector: "FinTech", demand_percentage: 88 },
+    { sector: "E-Commerce", demand_percentage: 75 }
+  ],
+  recommended_role: { title: "Junior Full-Stack Developer", description: "Building responsive frontend interfaces." },
+  marketable_services: [
+    { service_name: "Custom Web Application Development", demand_score: 92, description: "Developing custom dashboards." }
+  ]
 };
 
 function App() {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null); 
   const [view, setView] = useState('landing');
+  const [profile, setProfile] = useState(null);
   const [masterProfile, setMasterProfile] = useState(null);
   const [portfolioData, setPortfolioData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [isGeneratingPortfolio, setIsGeneratingPortfolio] = useState(false);
-  const [isGuest, setIsGuest] = useState(false);
-  const [isAuthSyncing, setIsAuthSyncing] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
