@@ -19,12 +19,14 @@ export default function Navbar({ user, userRole, view, setView, handleLogout, ma
       <div className="container mx-auto px-4 py-4 max-w-6xl flex justify-between items-center">
         
         {/* Branding */}
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate(isAnyAdmin ? 'admin_dashboard' : 'dashboard')}>
-          <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-lg flex items-center justify-center text-white shadow-lg">
-   <BrainCircuit className="w-5 h-5" /> </div>
-          <h1 className="text-xl font-bold text-slate-800 hidden sm:block">
-            {isAnyAdmin ? 'Admin Portal' : 'TUK-Skills_Map AI'}
-          </h1>
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(isAnyAdmin ? 'admin_dashboard' : 'dashboard')}>
+          <img src="/tuk-skills-map-logo.png" alt="TUK Skills Map Logo" className="w-10 h-10 object-contain rounded-lg shadow-sm" />
+          <div className="hidden sm:block">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.24em]">TUK Skills Map</p>
+            <h1 className="text-xl font-bold text-slate-800">
+              {isAnyAdmin ? 'Admin Portal' : 'Talent Portal'}
+            </h1>
+          </div>
         </div>
 
         {/* User Info & Toggle */}
