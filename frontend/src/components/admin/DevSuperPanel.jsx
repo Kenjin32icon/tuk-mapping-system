@@ -65,7 +65,7 @@ export default function DevSuperPanel() {
           <h2 className="text-3xl font-black mb-2 flex items-center gap-3">
             <Shield className="w-8 h-8 text-purple-400" /> Developer Super-Panel
           </h2>
-          <p className=\"text-slate-400\">Global System Administration & Security Oversight</p>
+          <p className="text-slate-400">Global System Administration & Security Oversight</p>
         </div>
         <div className="bg-purple-500/20 px-4 py-2 rounded-lg text-sm border border-purple-500/30 text-purple-300 font-bold tracking-widest uppercase">
           ROOT ACCESS GRANTED
