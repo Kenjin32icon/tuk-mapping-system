@@ -41,15 +41,11 @@ app.use(express.json());
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
-// --- DATABASE ---
-const mongoURI = process.env.MONGODB_URI;
-if (!mongoURI) {
-    console.error("❌ MONGODB_URI is not defined in environment variables.");
-} else {
-    mongoose.connect(mongoURI)
-      .then(() => console.log('✅ Connected to MongoDB Atlas'))
-      .catch(err => console.error('❌ MongoDB connection error:', err));
-}
+// --- DATABASE SCHEMAS ---
+const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/tuk-mapping';
+mongoose.connect(mongoURI)
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => console.error('❌ MongoDB error:', err));
 
 // --- SCHEMAS ---
 const UserSchema = new mongoose.Schema({
