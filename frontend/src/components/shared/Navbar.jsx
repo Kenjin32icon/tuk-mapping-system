@@ -20,11 +20,10 @@ export default function Navbar({ user, userRole, view, setView, handleLogout, ma
         
         {/* Branding */}
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate(isAnyAdmin ? 'admin_dashboard' : 'dashboard')}>
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold">
-            TU
-          </div>
+          <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-lg flex items-center justify-center text-white shadow-lg">
+   <BrainCircuit className="w-5 h-5" /> </div>
           <h1 className="text-xl font-bold text-slate-800 hidden sm:block">
-            {isAnyAdmin ? 'Admin Portal' : 'Talent Portal'}
+            {isAnyAdmin ? 'Admin Portal' : 'TUK-Skills_Map AI'}
           </h1>
         </div>
 
