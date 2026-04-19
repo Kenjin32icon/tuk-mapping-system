@@ -11,3 +11,4 @@ backend/node_modules
 backend/serviceAccount.b64
 backend/serviceAccount.json
 backend/tuk-mapping-system-GOOGLE_SHEETS_KEY.json
+frontend/src/.env
