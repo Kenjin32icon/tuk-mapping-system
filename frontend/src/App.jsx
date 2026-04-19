@@ -23,7 +23,7 @@ import PortfolioView from './components/student/PortfolioView';
 import AdminDashboardView from './components/admin/AdminDashboardView';
 
 // Ensure this matches your Render URL when deployed
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5173';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // --- MOCK DATA FOR GUEST MODE ---
 const MOCK_GUEST_PROFILE = {
