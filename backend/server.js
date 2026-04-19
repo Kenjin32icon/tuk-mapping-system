@@ -11,11 +11,12 @@ const mongoose = require('mongoose');
 const mammoth = require('mammoth');        
 const { jsonrepair } = require('jsonrepair'); 
 const admin = require('firebase-admin');     
-const { google } = require('googleapis');
+const { google } = require('googleapis'); 
+const rateLimit = require('express-rate-limit'); // ✅ FIX: Added missing import
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// ✅ FIX: Intelligent Firebase Authentication
+// --- INTELLIGENT FIREBASE AUTHENTICATION ---
 let serviceAccount;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     // If running on Render (Production)
@@ -47,7 +48,6 @@ mongoose.connect(mongoURI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB error:', err));
 
-// --- SCHEMAS ---
 const UserSchema = new mongoose.Schema({
     firebaseUid: { type: String, required: true, unique: true },
     email: { type: String, required: true },
@@ -77,22 +77,19 @@ const Profile = mongoose.model('Profile', ProfileSchema);
 // --- MIDDLEWARE ---
 const aiLimiter = rateLimit({ 
     windowMs: 15 * 60 * 1000, 
-    max: 15, 
-    message: { error: "Too many requests. Please try again later." } 
+    max: 10, 
+    message: "Too many AI requests." 
 });
 
 const verifyAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) return res.status(401).send('Unauthorized');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).send('Unauthorized');
     const token = authHeader.split(' ')[1];
     try {
         const decodedToken = await admin.auth().verifyIdToken(token);
         req.user = decodedToken;
         next();
-    } catch (error) { 
-        console.error("Auth Error:", error.message);
-        res.status(403).send('Invalid Token'); 
-    }
+    } catch (error) { res.status(403).send('Unauthorized'); }
 };
 
 const requireRole = (allowedRoles) => {
@@ -106,15 +103,13 @@ const requireRole = (allowedRoles) => {
     };
 };
 
-const upload = multer({ 
-    dest: 'uploads/',
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, 'uploads/'),
+    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
 });
+const upload = multer({ storage });
 
 // --- ROUTES ---
-
-app.get('/', (req, res) => res.send("TUK Mapping API is Running")); // Health check for Render
-
 app.post('/api/sync-user', verifyAuth, async (req, res) => {
     try {
         const { email, name } = req.user; 
@@ -124,12 +119,44 @@ app.post('/api/sync-user', verifyAuth, async (req, res) => {
             dbUser = new User({ firebaseUid: req.user.uid, email, name: name || 'User', role: assignedRole });
             await dbUser.save();
         }
-        res.json({ role: dbUser.role, institution: dbUser.institution, masterProfile: dbUser.masterProfile });
+        res.json({ role: dbUser.role, institution: dbUser.institution });
     } catch (error) { res.status(500).send('Error syncing user.'); }
 });
 
+app.get('/api/user-settings', verifyAuth, async (req, res) => {
+    try {
+        const dbUser = await User.findOne({ firebaseUid: req.user.uid });
+        res.json({ phone: dbUser?.phone || '', portfolio: dbUser?.portfolio || '' });
+    } catch (error) { res.status(500).send('Error fetching settings'); }
+});
+
+app.post('/api/update-settings', verifyAuth, async (req, res) => {
+    try {
+        const { phone, portfolio } = req.body;
+        const updatedUser = await User.findOneAndUpdate({ firebaseUid: req.user.uid }, { phone, portfolio }, { new: true });
+        res.json({ success: true, phone: updatedUser.phone, portfolio: updatedUser.portfolio });
+    } catch (error) { res.status(500).send('Error updating settings'); }
+});
+
+app.get('/api/admin/students', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN']), async (req, res) => {
+    try {
+        const students = await User.find({ role: 'STUDENT', masterProfile: { $ne: null } }).sort({ createdAt: -1 });
+        const studentData = students.map(u => ({
+            id: u._id,
+            name: u.name,
+            email: u.email,
+            phone: u.phone,
+            role: u.masterProfile?.recommended_role?.title || 'Unassigned',
+            readiness: u.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0,
+            bestSector: u.masterProfile?.kenyan_market_alignment?.best_skill_area_expertise || 'N/A',
+            date: u.createdAt
+        }));
+        res.json(studentData);
+    } catch (error) { res.status(500).send('Failed to fetch student directory.'); }
+});
+
 app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
-    if (!req.files || req.files.length === 0) return res.status(400).send('No documents.');
+    if (!req.files || req.files.length === 0) return res.status(400).send('No files uploaded.');
     try {
         let combinedText = "";
         for (const file of req.files) {
@@ -143,15 +170,17 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
             }
             combinedText += `\n--- DOC: ${file.originalname} ---\n${text}`;
         }
-        
-        const aiPrompt = `Analyze this student profile and return a detailed JSON report. Focus on skills, potential career paths in Kenya, and market readiness: ${combinedText.substring(0, 12000)}`;
-        
+        const aiPrompt = `You are an expert tech recruiter in Nairobi. Analyze the coursework and extract the student's profile.
+        Strictly return a valid JSON object matching this structure:
+        { "bio": "...", "skills": { "technical": [], "soft": [] }, "kenyan_market_alignment": { "best_skill_area_expertise": "...", "description": "...", "service_potentiality_score": 85 }, "recommended_role": { "title": "...", "description": "..." }, "marketable_services": [ { "service_name": "...", "demand_score": 90, "description": "..." } ] }
+        Combined Text: ${combinedText.substring(0, 15000)}`;
+
         const completion = await groq.chat.completions.create({
-            messages: [{ role: "system", content: "Reply strictly in valid JSON." }, { role: "user", content: aiPrompt }],
+            messages: [{ role: "system", content: "Reply strictly in JSON." }, { role: "user", content: aiPrompt }],
             model: "llama-3.3-70b-versatile",
             response_format: { type: "json_object" }
         });
-        
+
         const generatedProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
         const newProfile = new Profile({
             userId: req.user.uid,
@@ -163,9 +192,8 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
         res.json(generatedProfile);
     } catch (error) { 
         console.error("Analysis Error: ", error);
-        res.status(500).json({ error: 'Analysis failed.' }); 
+        res.status(500).json({ error: 'Analysis failed. Please ensure your documents contain readable text and try again.' }); 
     } finally { 
-        // Handles Render's ephemeral storage cleanup successfully
         req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); }); 
     }
 });
@@ -173,14 +201,17 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
 app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     try {
         const history = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
-        if (history.length < 2) return res.status(400).send("Need at least 2 document analyses to synthesize.");
+        if (history.length < 2) return res.status(400).send("Need 2+ documents.");
         
         const pastProfiles = history.map(doc => doc.generatedProfile);
-        const synthesisPrompt = `Synthesize these analyses into ONE master profile for a student in Nairobi. Return JSON with 'recommended_role' (object with 'title') and 'kenyan_market_alignment' (object with 'market_readiness_score'). Data: ${JSON.stringify(pastProfiles)}`;
+        const synthesisPrompt = `You are an elite Career Strategist in Nairobi. Synthesize these analyses into ONE master profile.
+        Strictly output JSON: { "bio": "...", "skills": { "technical": [], "soft": [], "transferable": [] }, "kenyan_market_alignment": { "best_skill_area_expertise": "...", "description": "...", "service_potentiality_score": 85, "market_readiness_score": 78, "skill_scarcity_index": "High" }, "sector_demand": [ { "sector": "FinTech", "demand_percentage": 90 } ], "recommended_role": { "title": "...", "description": "..." }, "marketable_services": [ { "service_name": "...", "demand_score": 90, "description": "..." } ] }
+        Data: ${JSON.stringify(pastProfiles)}`;
 
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: synthesisPrompt }],
             model: "llama-3.3-70b-versatile",
+            temperature: 0.4,
             response_format: { type: "json_object" }
         });
         
@@ -192,8 +223,7 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
             { new: true } 
         );
 
-        // Run sync in background
-        syncToGoogleSheets(updatedUser).catch(err => console.error("Sheets Sync Error:", err));
+        syncToGoogleSheets(updatedUser).catch(err => console.error("Google Sheets Sync failed:", err));
 
         res.json(consolidatedProfile);
     } catch (e) { 
@@ -202,11 +232,47 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     }
 });
 
-// --- GOOGLE SHEETS SYNC FIX ---
+app.post('/api/generate-portfolio', verifyAuth, aiLimiter, async (req, res) => {
+    const { masterProfile, serviceName, serviceDescription } = req.body;
+    const portfolioPrompt = `
+    You are an expert tech recruiter in Kenya. The user wants to offer: "${serviceName}" (${serviceDescription}).
+    Master Profile: ${JSON.stringify(masterProfile)}
+    Design a targeted 3-project portfolio framework.
+    Strictly output JSON: { "portfolio_title": "...", "targeted_bio": "...", "value_proposition": "...", "projects": [ { "project_name": "...", "problem_statement": "...", "tech_stack": [], "features": [], "github_readme_pitch": "..." } ], "freelance_platform_tags": [] }
+    `;
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: portfolioPrompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.4,
+            response_format: { type: "json_object" }
+        });
+        res.json(JSON.parse(jsonrepair(completion.choices[0].message.content)));
+    } catch (error) { res.status(500).send('Portfolio generation failed.'); }
+});
+
+app.post('/api/match-job', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN']), async (req, res) => {
+    const { jobDescription } = req.body;
+    const students = await User.find({ role: 'STUDENT', masterProfile: { $ne: null } });
+    const candidateData = students.map(u => ({ id: u._id, email: u.email, name: u.name, profile: u.masterProfile }));
+
+    const matchPrompt = `You are an AI Recruitment Engine. Find top 3 best-matching students for this job. Return JSON: { "matches": [ { "candidateId": "id_here", "name": "name_here", "email": "email_here", "matchPercentage": 90, "reason": "Short reason why they fit" } ] }
+    Job Description: ${jobDescription}\nCandidates: ${JSON.stringify(candidateData)}`;
+    
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: matchPrompt }],
+            model: "llama-3.3-70b-versatile",
+            response_format: { type: "json_object" }
+        });
+        res.json(JSON.parse(completion.choices[0].message.content));
+    } catch (error) { res.status(500).send('Matching failed.'); }
+});
+
+// --- GOOGLE SHEETS SYNC ---
 async function syncToGoogleSheets(studentData) {
     if (!process.env.GOOGLE_SHEETS_KEY || !process.env.SPREADSHEET_ID) return;
     try {
-        // Parse JSON first, then fix the private key
         const sheetCredentials = JSON.parse(process.env.GOOGLE_SHEETS_KEY);
         sheetCredentials.private_key = sheetCredentials.private_key.replace(/\\n/g, '\n');
         
@@ -216,7 +282,6 @@ async function syncToGoogleSheets(studentData) {
         });
         const sheets = google.sheets({ version: 'v4', auth });
         
-        // Match the data structure from your synthesis prompt
         const role = studentData.masterProfile?.recommended_role?.title || "N/A";
         const score = studentData.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0;
 
@@ -232,6 +297,4 @@ async function syncToGoogleSheets(studentData) {
 }
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Secure Role-Based Backend running on port ${PORT}`));
