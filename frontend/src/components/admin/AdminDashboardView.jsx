@@ -5,6 +5,7 @@ import { Users, AlertTriangle, TrendingUp } from 'lucide-react';
 import { auth } from '../../firebase';
 
 // Import our new separated modules
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 import StudentDirectory from './StudentDirectory';
 import JobMatching from './JobMatching';
 
