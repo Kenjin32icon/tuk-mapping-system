@@ -190,21 +190,26 @@ app.post('/api/update-settings', verifyAuth, async (req, res) => {
     } catch (error) { res.status(500).send('Error updating settings'); }
 });
 
-app.get('/api/admin/students', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN']), async (req, res) => {
-    try {
-        const students = await User.find({ role: 'STUDENT', masterProfile: { $ne: null } }).sort({ createdAt: -1 });
-        const studentData = students.map(u => ({
-            id: u._id,
-            name: u.name,
-            email: u.email,
-            phone: u.phone,
-            role: u.masterProfile?.recommended_role?.title || 'Unassigned',
-            readiness: u.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0,
-            bestSector: u.masterProfile?.kenyan_market_alignment?.best_skill_area_expertise || 'N/A',
-            date: u.createdAt
-        }));
-        res.json(studentData);
-    } catch (error) { res.status(500).send('Failed to fetch student directory.'); }
+app.get('/api/admin/students', async (req, res) => {
+    // ... authentication checks ...
+    const students = await User.find({ role: 'STUDENT' })
+        // Ensure you are returning the bio and masterProfile!
+        .select('name email phone bio masterProfile'); 
+    
+    // Transform the data for the frontend
+    const formattedStudents = students.map(s => ({
+        _id: s._id,
+        name: s.name,
+        email: s.email,
+        phone: s.phone,
+        bio: s.bio, // Passed to frontend
+        masterProfile: s.masterProfile, // Passed to frontend for the Modal
+        role: s.masterProfile?.recommended_role?.title || "Pending",
+        bestSector: s.masterProfile?.kenyan_market_alignment?.best_fit_sector || "Pending",
+        readiness: s.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0
+    }));
+
+    res.json(formattedStudents);
 });
 
 app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
