@@ -12,17 +12,15 @@ const mammoth = require('mammoth');
 const { jsonrepair } = require('jsonrepair'); 
 const admin = require('firebase-admin');     
 const { google } = require('googleapis'); 
-const rateLimit = require('express-rate-limit'); // ✅ FIX: Added missing import
+const rateLimit = require('express-rate-limit'); 
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // --- INTELLIGENT FIREBASE AUTHENTICATION ---
 let serviceAccount;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    // If running on Render (Production)
     serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 } else {
-    // If running on Localhost (Development)
     serviceAccount = require("./serviceAccountKey.json");
 }
 
@@ -33,7 +31,7 @@ admin.initializeApp({
 const app = express();
 
 app.use(cors({
-    origin: [process.env.FRONTEND_URL, 'http://localhost:5000', 'https://tuk-frontend-web.vercel.app'], 
+    origin: [process.env.FRONTEND_URL, 'http://localhost:5173', 'https://tuk-frontend-web.vercel.app'], 
     methods: ['GET', 'POST', 'PUT'],
     credentials: true
 }));
@@ -42,7 +40,9 @@ app.use(express.json());
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
-// --- DATABASE SCHEMAS ---
+// ==========================================
+// --- 1. DATABASE SCHEMAS ---
+// ==========================================
 const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/tuk-mapping';
 mongoose.connect(mongoURI)
   .then(() => console.log('✅ Connected to MongoDB'))
@@ -74,7 +74,7 @@ const ProfileSchema = new mongoose.Schema({
 });
 const Profile = mongoose.model('Profile', ProfileSchema);
 
-// --- NEW: AUDIT LOG SCHEMA ---
+// AUDIT LOG SCHEMA
 const SystemLogSchema = new mongoose.Schema({
     userEmail: { type: String, required: true },
     action: { type: String, required: true },
@@ -90,43 +90,8 @@ const createLog = async (email, action, details) => {
 };
 
 // ==========================================
-// --- SUPER ADMIN EXCLUSIVE ROUTES ---
+// --- 2. MIDDLEWARE (Must be above routes!) ---
 // ==========================================
-
-// 1. Get All Users in the System
-app.get('/api/super/users', verifyAuth, requireRole(['SUPER_ADMIN']), async (req, res) => {
-    try {
-        const users = await User.find().sort({ createdAt: -1 });
-        res.json(users);
-    } catch (error) { res.status(500).send('Failed to fetch global users.'); }
-});
-
-// 2. Change User Role (Privilege Control)
-app.put('/api/super/role', verifyAuth, requireRole(['SUPER_ADMIN']), async (req, res) => {
-    const { userId, newRole } = req.body;
-    try {
-        const targetUser = await User.findById(userId);
-        if (!targetUser) return res.status(404).send('User not found.');
-
-        targetUser.role = newRole;
-        await targetUser.save();
-
-        // Log this critical action
-        await createLog(req.user.email, 'ROLE_UPDATED', `Changed role of ${targetUser.email} to ${newRole}`);
-        
-        res.json({ success: true, message: `Updated ${targetUser.email} to ${newRole}` });
-    } catch (error) { res.status(500).send('Failed to update role.'); }
-});
-
-// 3. Get System Audit Logs
-app.get('/api/super/logs', verifyAuth, requireRole(['SUPER_ADMIN']), async (req, res) => {
-    try {
-        const logs = await SystemLog.find().sort({ timestamp: -1 }).limit(100);
-        res.json(logs);
-    } catch (error) { res.status(500).send('Failed to fetch logs.'); }
-});
-
-// --- MIDDLEWARE ---
 const aiLimiter = rateLimit({ 
     windowMs: 15 * 60 * 1000, 
     max: 10, 
@@ -161,7 +126,41 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// --- ROUTES ---
+// ==========================================
+// --- 3. ROUTES ---
+// ==========================================
+
+// --- SUPER ADMIN EXCLUSIVE ROUTES ---
+app.get('/api/super/users', verifyAuth, requireRole(['SUPER_ADMIN']), async (req, res) => {
+    try {
+        const users = await User.find().sort({ createdAt: -1 });
+        res.json(users);
+    } catch (error) { res.status(500).send('Failed to fetch global users.'); }
+});
+
+app.put('/api/super/role', verifyAuth, requireRole(['SUPER_ADMIN']), async (req, res) => {
+    const { userId, newRole } = req.body;
+    try {
+        const targetUser = await User.findById(userId);
+        if (!targetUser) return res.status(404).send('User not found.');
+
+        targetUser.role = newRole;
+        await targetUser.save();
+
+        await createLog(req.user.email, 'ROLE_UPDATED', `Changed role of ${targetUser.email} to ${newRole}`);
+        
+        res.json({ success: true, message: `Updated ${targetUser.email} to ${newRole}` });
+    } catch (error) { res.status(500).send('Failed to update role.'); }
+});
+
+app.get('/api/super/logs', verifyAuth, requireRole(['SUPER_ADMIN']), async (req, res) => {
+    try {
+        const logs = await SystemLog.find().sort({ timestamp: -1 }).limit(100);
+        res.json(logs);
+    } catch (error) { res.status(500).send('Failed to fetch logs.'); }
+});
+
+// --- STANDARD USER & ADMIN ROUTES ---
 app.post('/api/sync-user', verifyAuth, async (req, res) => {
     try {
         const { email, name } = req.user; 
@@ -170,6 +169,7 @@ app.post('/api/sync-user', verifyAuth, async (req, res) => {
             const assignedRole = (email === 'kariukilewis04@students.tukenya.ac.ke') ? 'SUPER_ADMIN' : 'STUDENT';
             dbUser = new User({ firebaseUid: req.user.uid, email, name: name || 'User', role: assignedRole });
             await dbUser.save();
+            await createLog(email, 'USER_REGISTERED', `New account created.`);
         }
         res.json({ role: dbUser.role, institution: dbUser.institution });
     } catch (error) { res.status(500).send('Error syncing user.'); }
@@ -275,6 +275,7 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
             { new: true } 
         );
 
+        await createLog(req.user.email, 'PROFILE_SYNTHESIZED', `Generated master profile.`);
         syncToGoogleSheets(updatedUser).catch(err => console.error("Google Sheets Sync failed:", err));
 
         res.json(consolidatedProfile);
@@ -321,7 +322,9 @@ app.post('/api/match-job', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_A
     } catch (error) { res.status(500).send('Matching failed.'); }
 });
 
-// --- GOOGLE SHEETS SYNC ---
+// ==========================================
+// --- 4. GOOGLE SHEETS SYNC ---
+// ==========================================
 async function syncToGoogleSheets(studentData) {
     if (!process.env.GOOGLE_SHEETS_KEY || !process.env.SPREADSHEET_ID) return;
     try {
