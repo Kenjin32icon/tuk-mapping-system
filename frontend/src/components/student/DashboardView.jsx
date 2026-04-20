@@ -6,6 +6,40 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell
 } from 'recharts';
 
+// Add this helper component at the top of DashboardView.jsx (outside the main export function)
+const AffiliateCard = ({ roleTitle }) => {
+  // Simple logic to match gear to the AI's recommended role
+  let gear = { category: "Productivity", item: "High-Performance Laptops", link: "YOUR_JUMIA_GENERAL_LINK_HERE" };
+  
+  if (roleTitle && roleTitle.toLowerCase().includes('software') || roleTitle.toLowerCase().includes('developer')) {
+    gear = { category: "Coding", item: "External Monitors & Mechanical Keyboards", link: "YOUR_JUMIA_MONITOR_LINK_HERE" };
+  } else if (roleTitle && roleTitle.toLowerCase().includes('design') || roleTitle.toLowerCase().includes('creative')) {
+    gear = { category: "Creative", item: "Graphics Tablets & Color-Accurate Displays", link: "YOUR_JUMIA_TABLET_LINK_HERE" };
+  }
+
+  return (
+    <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-6 rounded-3xl shadow-lg text-white mt-8 flex flex-col md:flex-row items-center justify-between">
+      <div>
+        <h3 className="text-lg font-bold flex items-center gap-2">
+          <Target className="w-5 h-5 text-emerald-200" /> 
+          Essential Gear for {roleTitle || "Your Career"}
+        </h3>
+        <p className="text-emerald-100 text-sm mt-1 max-w-md">
+          To succeed as a top-tier professional in this sector, having the right setup is crucial. Upgrade your {gear.category} setup with the best student deals.
+        </p>
+      </div>
+      <a 
+        href={gear.link} 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="mt-4 md:mt-0 px-6 py-3 bg-white text-emerald-700 font-bold rounded-xl hover:bg-emerald-50 transition-colors shadow-sm text-sm"
+      >
+        Shop {gear.item}
+      </a>
+    </div>
+  );
+};
+
 export default function DashboardView({ user, profile, masterProfile, onDownload, onGenerateMaster, isSynthesizing, isGuest }) {
   const activeProfile = masterProfile || profile;
 
@@ -115,8 +149,13 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
       {/* 4. VERTICAL SKILLS MODULE */}
       <div className="space-y-6">
         <SkillList title="Core Technical Expertise" skills={activeProfile?.skills?.technical} />
-        <SkillList title="Transferable & Soft Skills" skills={[...(activeProfile?.skills?.soft || []), ...(activeProfile?.skills?.transferable || [])]} />
+        <SkillList title="Essential Soft Skills" skills={activeProfile?.skills?.soft} />
       </div>
+
+      {/* 5. AFFILIATE MARKETING MODULE (NEW) */}
+      {!isGuest && (
+        <AffiliateCard roleTitle={activeProfile?.recommended_role?.title} />
+      )}
 
     </div>
   );
