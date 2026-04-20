@@ -9,7 +9,13 @@ export default function LandingView({ onLogin, onGuestLogin }) {
     <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
       <div className="bg-white p-10 rounded-3xl shadow-xl border border-slate-100 w-full max-w-md text-center">
         <div className="w-24 h-24 mx-auto mb-6 rounded-3xl overflow-hidden shadow-lg bg-slate-50 flex items-center justify-center">
-          <img src="/tuk-skills-map-logo.png" alt="TUK Skills Map Logo" className="w-full h-full object-contain" />
+          <a href="/" className="flex items-center gap-3">
+  <img src="/tuk-skills-map-logo.png" alt="TUK Skills Map Logo" className="w-10 h-10 object-contain rounded-lg shadow-sm" />
+  <div className="hidden sm:block">
+    <p className="text-xs ...">TUK Skills Map</p>
+    <h1 className="text-xl ...">Talent Portal</h1>
+  </div>
+</a>
         </div>
         <h1 className="text-3xl font-extrabold text-slate-900 mb-2">TUK-K Skills Map</h1>
         <p className="text-slate-500 mb-8 text-sm leading-relaxed">Empowering students through AI-driven market mapping and portfolio generation.</p>

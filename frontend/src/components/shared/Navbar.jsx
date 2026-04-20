@@ -20,7 +20,13 @@ export default function Navbar({ user, userRole, view, setView, handleLogout, ma
         
         {/* Branding */}
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(isAnyAdmin ? 'admin_dashboard' : 'dashboard')}>
-          <img src="/tuk-skills-map-logo.png" alt="TUK Skills Map Logo" className="w-10 h-10 object-contain rounded-lg shadow-sm" />
+          <a href="/" className="flex items-center gap-3">
+  <img src="/tuk-skills-map-logo.png" alt="TUK Skills Map Logo" className="w-10 h-10 object-contain rounded-lg shadow-sm" />
+  <div className="hidden sm:block">
+    <p className="text-xs ...">TUK Skills Map</p>
+    <h1 className="text-xl ...">Talent Portal</h1>
+  </div>
+</a>
           <div className="hidden sm:block">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.24em]">TUK Skills Map</p>
             <h1 className="text-xl font-bold text-slate-800">
