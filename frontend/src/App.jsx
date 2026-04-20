@@ -5,6 +5,7 @@ import html2pdf from 'html2pdf.js';
 import { onAuthStateChanged, signOut, signInWithPopup } from 'firebase/auth'; // ✅ Added signInWithPopup
 import { auth, googleProvider } from './firebase';
 import { Toaster, toast } from 'react-hot-toast';
+import { Analytics } from "@vercel/analytics/react";
 
 // Shared Components
 import LandingView from './components/shared/LandingView';
@@ -273,6 +274,7 @@ function App() {
         {view === 'module_services' && <ServicesModuleView masterProfile={masterProfile} onPrepare={handlePreparePortfolio} />}
         {view === 'module_portfolio' && <PortfolioView portfolioData={portfolioData} onBack={() => setView('module_services')} onDownload={() => downloadPDF('portfolio-export')} />}
       </main>
+      <Analytics />
     </div>
   );
 }

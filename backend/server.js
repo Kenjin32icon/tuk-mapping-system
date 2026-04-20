@@ -191,10 +191,15 @@ app.post('/api/update-settings', verifyAuth, async (req, res) => {
 });
 
 app.get('/api/admin/students', async (req, res) => {
-    // ... authentication checks ...
-    const students = await User.find({ role: 'STUDENT' })
-        // Ensure you are returning the bio and masterProfile!
-        .select('name email phone bio masterProfile'); 
+    // ... admin auth checks ...
+    try {
+        // MUST include masterProfile in the fetch!
+        const students = await User.find({}).select('name email role phone masterProfile readiness bestSector');
+        res.json(students);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
     
     // Transform the data for the frontend
     const formattedStudents = students.map(s => ({
