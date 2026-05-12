@@ -4,7 +4,7 @@ import axios from 'axios';
 import html2pdf from 'html2pdf.js';
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
-import { onAuthStateChanged, signOut, signInWithPopup } from 'firebase/auth'; // ✅ Added signInWithPopup
+import { onAuthStateChanged, signOut, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 import { Toaster, toast } from 'react-hot-toast';
 import { Analytics } from "@vercel/analytics/react";
@@ -13,7 +13,7 @@ import { Analytics } from "@vercel/analytics/react";
 import LandingView from './components/shared/LandingView';
 import Navbar from './components/shared/Navbar';
 import ProfileSettings from './components/shared/ProfileSettings';
-import OnboardingTour from './components/shared/OnboardingTour'; // ⬅️ NEW IMPORT
+import OnboardingTour from './components/shared/OnboardingTour';
 
 // Student Components
 import DashboardView from './components/student/DashboardView';
@@ -25,9 +25,8 @@ import PortfolioView from './components/student/PortfolioView';
 
 // Admin Components
 import AdminDashboardView from './components/admin/AdminDashboardView';
-import DevSuperPanel from './components/admin/DevSuperPanel'; // ⬅️ NEW IMPORT
+import DevSuperPanel from './components/admin/DevSuperPanel';
 
-// Ensure this matches your Render URL when deployed
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // --- MOCK DATA FOR GUEST MODE ---
@@ -57,7 +56,7 @@ const MOCK_GUEST_PROFILE = {
 
 function App() {
   const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null); 
+  const [userRole, setUserRole] = useState(null);
   const [view, setView] = useState('landing');
   const [profile, setProfile] = useState(null);
   const [masterProfile, setMasterProfile] = useState(null);
@@ -68,56 +67,57 @@ function App() {
   const [showOnboardingTour, setShowOnboardingTour] = useState(false);
   const { width, height } = useWindowSize();
 
-  // ✅ FIX: Added the missing auth syncing state
+  // ✅ FIX: isAuthSyncing starts true — resolved by Firebase's onAuthStateChanged
   const [isAuthSyncing, setIsAuthSyncing] = useState(true);
 
- useEffect(() => {
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (userRole === 'GUEST') return; 
+      // ✅ FIX: Don't skip isAuthSyncing=false for GUEST — Guest login handles it separately
+      if (userRole === 'GUEST') {
+        setIsAuthSyncing(false); // Ensure spinner never sticks for guest
+        return;
+      }
 
       setUser(currentUser);
       if (currentUser) {
-        setIsAuthSyncing(true); // Start spinner
+        setIsAuthSyncing(true);
         try {
           const token = await currentUser.getIdToken();
           const response = await axios.post(`${API_BASE_URL}/api/sync-user`, {}, {
             headers: { Authorization: `Bearer ${token}` }
           });
-          
+
           const role = response.data.role;
           setUserRole(role);
 
           if (role === 'SUPER_ADMIN') setView('dev_dashboard');
           else if (role === 'UNIVERSITY_ADMIN') setView('admin_dashboard');
-          else if (role === 'GOVT_ADMIN') setView('govt_dashboard'); 
-          else setView('onboarding'); 
-
+          else if (role === 'GOVT_ADMIN') setView('govt_dashboard');
+          else setView('dashboard'); // ✅ FIX: Send students straight to dashboard, not onboarding
         } catch (error) {
           console.error("Failed to fetch user role.", error);
           toast.error("Failed to connect to the server. Please try again.");
-          await signOut(auth); // Safely log them out
+          await signOut(auth);
           setView('landing');
         } finally {
-          setIsAuthSyncing(false); // Stop spinner
+          setIsAuthSyncing(false);
         }
       } else {
         setView('landing');
         setUserRole(null);
-        setIsAuthSyncing(false); // Stop spinner
+        setIsAuthSyncing(false);
       }
     });
 
     return () => unsubscribe();
   }, [userRole]);
 
-  // ✅ MOVED TOUR LOGIC INTO ITS OWN EFFECT
+  // Tour logic — only show for verified (non-guest) users who haven't seen it
   useEffect(() => {
     const hasSeenTour = localStorage.getItem('tuk_tour_completed');
-    // We use the 'user' state variable here, NOT 'currentUser'
-    if (user && !hasSeenTour && !userRole) {
-      // Delay tour start to allow UI to render
-      const timer = setTimeout(() => setShowOnboardingTour(true), 2000);
-      return () => clearTimeout(timer); // cleanup timer
+    if (user && userRole && userRole === 'STUDENT' && !hasSeenTour) {
+      const timer = setTimeout(() => setShowOnboardingTour(true), 2500);
+      return () => clearTimeout(timer);
     }
   }, [user, userRole]);
 
@@ -131,6 +131,8 @@ function App() {
     setUserRole('GUEST');
     setMasterProfile(MOCK_GUEST_PROFILE);
     setView('dashboard');
+    // ✅ FIX: Guest login MUST clear the auth syncing spinner — Firebase never fires for fake users
+    setIsAuthSyncing(false);
   };
 
   const handleLogout = async () => {
@@ -141,6 +143,7 @@ function App() {
     setUserRole(null);
     setUser(null);
     setView('landing');
+    setIsAuthSyncing(false);
   };
 
   const requireLiveAccount = () => {
@@ -156,12 +159,12 @@ function App() {
     if (requireLiveAccount()) return;
     const selectedFiles = Array.from(e.target.files);
     if (!selectedFiles.length) return;
-    
+
     setLoading(true);
     setView('processing');
     const formData = new FormData();
     selectedFiles.forEach((file) => formData.append('documents', file));
-    
+
     try {
       const token = await user.getIdToken();
       const response = await axios.post(`${API_BASE_URL}/api/analyze-data`, formData, {
@@ -171,7 +174,7 @@ function App() {
       setView('dashboard');
     } catch (error) {
       toast.error(error.response?.data?.error || "Error analyzing documents.");
-      setView('onboarding');
+      setView('dashboard'); // ✅ FIX: Return to dashboard, not onboarding, on error
     } finally {
       setLoading(false);
     }
@@ -180,7 +183,7 @@ function App() {
   const handleGenerateMasterProfile = async () => {
     if (requireLiveAccount()) return;
     setIsSynthesizing(true);
-    setView('processing'); 
+    setView('processing');
     try {
       const token = await user.getIdToken();
       const response = await axios.post(`${API_BASE_URL}/api/synthesize-profile`, {}, {
@@ -188,12 +191,11 @@ function App() {
       });
       setMasterProfile(response.data);
 
-      // TRIGGER FIREWORKS
       setShowFireworks(true);
       setTimeout(() => setShowFireworks(false), 6000);
 
       toast.success('Master Profile generated successfully!');
-      setView('dashboard'); 
+      setView('dashboard');
     } catch (error) {
       toast.error("Could not generate Master Profile. Make sure you have uploaded at least 2 documents.");
       setView('dashboard');
@@ -204,20 +206,20 @@ function App() {
 
   const handlePreparePortfolio = async (service) => {
     if (requireLiveAccount()) return;
-    setView('processing'); 
+    setView('processing');
     try {
-        const token = await user.getIdToken();
-        const response = await axios.post(`${API_BASE_URL}/api/generate-portfolio`, {
-            masterProfile,
-            serviceName: service.service_name,
-            serviceDescription: service.description
-        }, { headers: { Authorization: `Bearer ${token}` } });
-        
-        setPortfolioData(response.data);
-        setView('module_portfolio');
+      const token = await user.getIdToken();
+      const response = await axios.post(`${API_BASE_URL}/api/generate-portfolio`, {
+        masterProfile,
+        serviceName: service.service_name,
+        serviceDescription: service.description
+      }, { headers: { Authorization: `Bearer ${token}` } });
+
+      setPortfolioData(response.data);
+      setView('module_portfolio');
     } catch (e) {
-        toast.error("Failed to generate portfolio.");
-        setView('module_services');
+      toast.error("Failed to generate portfolio.");
+      setView('module_services');
     }
   };
 
@@ -239,24 +241,20 @@ function App() {
     toast.success('Tour completed! 🎉', { duration: 3000 });
   };
 
-  const handleStartTour = () => {
-    setShowOnboardingTour(true);
-  };
-
   const isGuest = userRole === 'GUEST';
 
-  // ✅ FIX: Render a loading screen while waiting for the backend
+  // Show spinner only while waiting for Firebase auth resolution
   if (isAuthSyncing) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
-          <div className="relative w-20 h-20 mb-6">
-            <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Connecting securely...</h2>
-          <p className="text-slate-500 max-w-sm text-center">
-            Synchronizing with the TU-K database. (This may take up to 40 seconds on the first load).
-          </p>
+        <div className="relative w-20 h-20 mb-6">
+          <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
+          <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">Connecting securely...</h2>
+        <p className="text-slate-500 max-w-sm text-center">
+          Synchronizing with the TU-K database. (This may take up to 40 seconds on the first load).
+        </p>
       </div>
     );
   }
@@ -265,33 +263,44 @@ function App() {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       {showFireworks && <Confetti width={width} height={height} recycle={false} numberOfPieces={500} />}
       <Toaster position="top-right" />
-      <Navbar 
-        user={user} 
-        userRole={userRole} 
-        view={view} 
-        setView={setView} 
-        handleLogout={handleLogout} 
+      <Navbar
+        user={user}
+        userRole={userRole}
+        view={view}
+        setView={setView}
+        handleLogout={handleLogout}
         masterProfile={masterProfile}
         onGenerateMaster={handleGenerateMasterProfile}
-        onStartTour={() => setShowOnboardingTour(true)} // <-- MAKE SURE THIS PROP IS HERE
+        onStartTour={() => setShowOnboardingTour(true)}
       />
 
       <main className="container mx-auto p-4 md:p-8 max-w-6xl">
-        {view === 'landing' && <LandingView onLogin={() => signInWithPopup(auth, googleProvider)} onGuestLogin={handleGuestLogin} />}
-        
+        {view === 'landing' && (
+          <LandingView
+            onLogin={() => signInWithPopup(auth, googleProvider)}
+            onGuestLogin={handleGuestLogin}
+          />
+        )}
+
         {view === 'onboarding' && (
-          <OnboardingView user={user} onFileChange={handleProcessDocuments} isUploading={loading} onSkip={() => setView('dashboard')} isGuest={isGuest} />
+          <OnboardingView
+            user={user}
+            onFileChange={handleProcessDocuments}
+            isUploading={loading}
+            onSkip={() => setView('dashboard')}
+            isGuest={isGuest}
+          />
         )}
 
         {view === 'processing' && (
           <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
-             <div className="relative w-20 h-20">
-                <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
-                <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-             </div>
-             <h3 className="text-2xl font-bold text-slate-900">
-                {isSynthesizing ? 'Synthesizing Master Profile...' : 'AI is mapping your potential...'}
-             </h3>
+            <div className="relative w-20 h-20">
+              <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+            <h3 className="text-2xl font-bold text-slate-900">
+              {isSynthesizing ? 'Synthesizing Master Profile...' : 'AI is mapping your potential...'}
+            </h3>
           </div>
         )}
 
@@ -306,9 +315,10 @@ function App() {
             isSynthesizing={isSynthesizing}
             isGuest={isGuest}
             apiBaseUrl={API_BASE_URL}
+            setView={setView}
           />
         )}
-        
+
         {view === 'admin_dashboard' && <AdminDashboardView />}
         {view === 'dev_dashboard' && <DevSuperPanel />}
         {view === 'settings' && <ProfileSettings user={user} isAdmin={userRole === 'SUPER_ADMIN'} />}
@@ -319,7 +329,6 @@ function App() {
         {view === 'module_portfolio' && <PortfolioView portfolioData={portfolioData} onBack={() => setView('module_services')} onDownload={() => downloadPDF('portfolio-export')} />}
       </main>
 
-      {/* ONBOARDING TOUR */}
       <OnboardingTour
         run={showOnboardingTour}
         onComplete={handleTourComplete}
