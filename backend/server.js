@@ -195,26 +195,24 @@ app.get('/api/admin/students', async (req, res) => {
     try {
         // MUST include masterProfile in the fetch!
         const students = await User.find({}).select('name email role phone masterProfile readiness bestSector');
-        res.json(students);
+        
+        // Transform the data for the frontend
+        const formattedStudents = students.map(s => ({
+            _id: s._id,
+            name: s.name,
+            email: s.email,
+            phone: s.phone,
+            bio: s.bio, // Passed to frontend
+            masterProfile: s.masterProfile, // Passed to frontend for the Modal
+            role: s.masterProfile?.recommended_role?.title || "Pending",
+            bestSector: s.masterProfile?.kenyan_market_alignment?.best_fit_sector || "Pending",
+            readiness: s.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0
+        }));
+
+        res.json(formattedStudents);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
-});
-    
-    // Transform the data for the frontend
-    const formattedStudents = students.map(s => ({
-        _id: s._id,
-        name: s.name,
-        email: s.email,
-        phone: s.phone,
-        bio: s.bio, // Passed to frontend
-        masterProfile: s.masterProfile, // Passed to frontend for the Modal
-        role: s.masterProfile?.recommended_role?.title || "Pending",
-        bestSector: s.masterProfile?.kenyan_market_alignment?.best_fit_sector || "Pending",
-        readiness: s.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0
-    }));
-
-    res.json(formattedStudents);
 });
 
 app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5), async (req, res) => {
@@ -295,23 +293,13 @@ app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     }
 });
 
-app.post('/api/generate-portfolio', verifyAuth, aiLimiter, async (req, res) => {
-    const { masterProfile, serviceName, serviceDescription } = req.body;
-    const portfolioPrompt = `
-    You are an expert tech recruiter in Kenya. The user wants to offer: "${serviceName}" (${serviceDescription}).
-    Master Profile: ${JSON.stringify(masterProfile)}
-    Design a targeted 3-project portfolio framework.
-    Strictly output JSON: { "portfolio_title": "...", "targeted_bio": "...", "value_proposition": "...", "projects": [ { "project_name": "...", "problem_statement": "...", "tech_stack": [], "features": [], "github_readme_pitch": "..." } ], "freelance_platform_tags": [] }
-    `;
+app.get('/api/user-profile-count', verifyAuth, async (req, res) => {
     try {
-        const completion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: portfolioPrompt }],
-            model: "llama-3.3-70b-versatile",
-            temperature: 0.4,
-            response_format: { type: "json_object" }
-        });
-        res.json(JSON.parse(jsonrepair(completion.choices[0].message.content)));
-    } catch (error) { res.status(500).send('Portfolio generation failed.'); }
+        const count = await Profile.countDocuments({ userId: req.user.uid });
+        res.json({ count });
+    } catch (error) {
+        res.status(500).send('Error fetching profile count.');
+    }
 });
 
 app.post('/api/match-job', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN']), async (req, res) => {

@@ -296,7 +296,17 @@ function App() {
         )}
 
         {view === 'dashboard' && (
-          <DashboardView user={user} profile={profile} masterProfile={masterProfile} onDownload={() => downloadPDF('master-dashboard-export')} onGenerateMaster={handleGenerateMasterProfile} isSynthesizing={isSynthesizing} isGuest={isGuest} />
+          <DashboardView
+            user={user}
+            profile={profile}
+            masterProfile={masterProfile}
+            onUploadDocuments={handleProcessDocuments}
+            onDownload={() => downloadPDF('master-dashboard-export')}
+            onGenerateMaster={handleGenerateMasterProfile}
+            isSynthesizing={isSynthesizing}
+            isGuest={isGuest}
+            apiBaseUrl={API_BASE_URL}
+          />
         )}
         
         {view === 'admin_dashboard' && <AdminDashboardView />}

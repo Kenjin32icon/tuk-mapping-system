@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import SkillList from '../shared/SkillList'; // ⬅️ UPDATED PATH
 import ShareModal from '../shared/ShareModal'; // ⬅️ NEW IMPORT
-import { Download, BrainCircuit, TrendingUp, Target, Activity, Info, Share2 } from 'lucide-react';
+import { Download, BrainCircuit, TrendingUp, Target, Activity, Info, Share2, AlertTriangle } from 'lucide-react';
 import { 
   Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell
@@ -44,9 +45,40 @@ const AffiliateCard = ({ roleTitle }) => {
   );
 };
 
-export default function DashboardView({ user, profile, masterProfile, onDownload, onGenerateMaster, isSynthesizing, isGuest }) {
-  const [showShareModal, React.useState(false);
+export default function DashboardView({ user, profile, masterProfile, onUploadDocuments, onDownload, onGenerateMaster, isSynthesizing, isGuest, apiBaseUrl }) {
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [documentCount, setDocumentCount] = useState(0);
+  const [showAlert, setShowAlert] = useState(false);
+  const fileInputRef = useRef(null);
+
   const activeProfile = masterProfile || profile;
+  const profileData = activeProfile || {
+    bio: "You haven't uploaded any documents yet. Use the button below to get started.",
+    skills: { technical: [], soft: [] },
+    kenyan_market_alignment: { best_skill_area_expertise: 'Student Talent', description: 'Upload documents to begin building your profile.', market_readiness_score: 0 },
+    sector_demand: [{ sector: 'General Tech', demand_percentage: 45 }],
+    recommended_role: { title: 'Awaiting analysis', description: 'Upload at least 5 documents to generate a master profile.' },
+    marketable_services: []
+  };
+  const needsUploadReminder = !activeProfile && !isGuest;
+
+  useEffect(() => {
+    if (!masterProfile && !isGuest && user) {
+      const fetchDocumentCount = async () => {
+        try {
+          const token = await user.getIdToken();
+          const response = await axios.get(`${apiBaseUrl}/api/user-profile-count`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setDocumentCount(response.data.count);
+          setShowAlert(response.data.count < 5);
+        } catch (error) {
+          console.error('Error fetching document count:', error);
+        }
+      };
+      fetchDocumentCount();
+    }
+  }, [masterProfile, user, isGuest, apiBaseUrl]);
 
   const radarData = (activeProfile?.skills?.technical || []).slice(0, 6).map((skill) => ({
     subject: skill.length > 12 ? skill.substring(0, 12) + '...' : skill,
@@ -75,6 +107,88 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
         </div>
       )}
 
+      {showAlert && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 p-5 rounded-3xl shadow-sm mb-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 mt-1 text-amber-600" />
+              <div>
+                <h3 className="text-lg font-bold">Keep your dashboard active</h3>
+                <p className="text-sm text-amber-700">
+                  You have uploaded {documentCount} document{documentCount !== 1 ? 's' : ''}. Upload at least 5 documents to generate a reliable master profile and unlock better AI insights.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center justify-center rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500"
+            >
+              Upload more documents
+            </button>
+          </div>
+        </div>
+      )}
+
+      <input
+        type="file"
+        multiple
+        ref={fileInputRef}
+        className="hidden"
+        onChange={onUploadDocuments}
+      />
+
+      {!activeProfile && !isGuest && (
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mb-6">
+          <div className="flex flex-col gap-4">
+            <div>
+              <h3 className="text-2xl font-bold text-slate-900">Upload Documents to Activate Your Dashboard</h3>
+              <p className="text-slate-600 mt-2">
+                No analysis is available yet. Upload at least 5 documents (coursework, projects, CV) to generate a master profile and see stronger dashboard insights.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500"
+              >
+                Upload Documents
+              </button>
+              <button
+                onClick={onGenerateMaster}
+                className="rounded-xl border border-slate-300 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Generate Master Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 0. DASHBOARD READY STATE */}
+      {!activeProfile && !isGuest && (
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mb-6">
+          <h2 className="text-xl font-bold text-slate-900 mb-3">Your dashboard is ready.</h2>
+          <p className="text-slate-600 mb-4">
+            You can still access your dashboard even without uploading documents. Start by uploading up to 5 files to generate your Master Profile and unlock deeper insights.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500"
+            >
+              Upload Documents
+            </button>
+            <button
+              onClick={onGenerateMaster}
+              disabled={isSynthesizing}
+              className="rounded-xl border border-slate-300 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              {isSynthesizing ? 'Generating...' : 'Generate Master Profile'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 1. PERSISTENT MASTER PROFILE ACTION BAR */}
       <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 profile-action-bar">
         <div className="flex items-center gap-4">
@@ -83,7 +197,7 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
           </div>
           <div>
             <h2 className="text-2xl font-bold">{user?.displayName}</h2>
-            <p className="text-emerald-400 font-medium">{activeProfile?.recommended_role?.title || 'Profile Under Analysis'}</p>
+            <p className="text-emerald-400 font-medium">{profileData.recommended_role?.title || 'Profile Under Analysis'}</p>
           </div>
         </div>
         
@@ -97,6 +211,13 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
             {isSynthesizing ? 'Synthesizing...' : (masterProfile ? 'Update Master Profile' : 'Generate Master Profile')}
           </button>
           
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="hidden md:inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-200 hover:bg-slate-700"
+          >
+            Upload documents
+          </button>
+
           {masterProfile && (
             <button 
               onClick={() => setShowShareModal(true)}
@@ -177,7 +298,7 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
         title="TU-K Talent Profile"
-        description={`Check out my AI-generated career profile as a ${activeProfile?.recommended_role?.title || 'Professional'}`}
+        description={`Check out my AI-generated career profile as a ${profileData?.recommended_role?.title || 'Professional'}`}
         url={`${window.location.origin}/profile/${user?.uid}`}
         user={user}
       />
