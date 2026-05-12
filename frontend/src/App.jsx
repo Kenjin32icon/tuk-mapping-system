@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import html2pdf from 'html2pdf.js';
+import Confetti from 'react-confetti';
+import { useWindowSize } from 'react-use';
 import { onAuthStateChanged, signOut, signInWithPopup } from 'firebase/auth'; // ✅ Added signInWithPopup
 import { auth, googleProvider } from './firebase';
 import { Toaster, toast } from 'react-hot-toast';
@@ -11,6 +13,7 @@ import { Analytics } from "@vercel/analytics/react";
 import LandingView from './components/shared/LandingView';
 import Navbar from './components/shared/Navbar';
 import ProfileSettings from './components/shared/ProfileSettings';
+import OnboardingTour from './components/shared/OnboardingTour'; // ⬅️ NEW IMPORT
 
 // Student Components
 import DashboardView from './components/student/DashboardView';
@@ -61,11 +64,14 @@ function App() {
   const [portfolioData, setPortfolioData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [showFireworks, setShowFireworks] = useState(false);
+  const [showOnboardingTour, setShowOnboardingTour] = useState(false);
+  const { width, height } = useWindowSize();
 
   // ✅ FIX: Added the missing auth syncing state
   const [isAuthSyncing, setIsAuthSyncing] = useState(true);
 
-  useEffect(() => {
+ useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (userRole === 'GUEST') return; 
 
@@ -87,7 +93,6 @@ function App() {
           else setView('onboarding'); 
 
         } catch (error) {
-          // ✅ FIX: Actually handle the error instead of silently failing
           console.error("Failed to fetch user role.", error);
           toast.error("Failed to connect to the server. Please try again.");
           await signOut(auth); // Safely log them out
@@ -101,8 +106,20 @@ function App() {
         setIsAuthSyncing(false); // Stop spinner
       }
     });
+
     return () => unsubscribe();
   }, [userRole]);
+
+  // ✅ MOVED TOUR LOGIC INTO ITS OWN EFFECT
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('tuk_tour_completed');
+    // We use the 'user' state variable here, NOT 'currentUser'
+    if (user && !hasSeenTour && !userRole) {
+      // Delay tour start to allow UI to render
+      const timer = setTimeout(() => setShowOnboardingTour(true), 2000);
+      return () => clearTimeout(timer); // cleanup timer
+    }
+  }, [user, userRole]);
 
   const handleGuestLogin = () => {
     setUser({
@@ -170,7 +187,12 @@ function App() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMasterProfile(response.data);
-      toast.success("Master Profile generated!");
+
+      // TRIGGER FIREWORKS
+      setShowFireworks(true);
+      setTimeout(() => setShowFireworks(false), 6000);
+
+      toast.success('Master Profile generated successfully!');
       setView('dashboard'); 
     } catch (error) {
       toast.error("Could not generate Master Profile. Make sure you have uploaded at least 2 documents.");
@@ -211,6 +233,16 @@ function App() {
     html2pdf().set(opt).from(element).save();
   };
 
+  const handleTourComplete = () => {
+    setShowOnboardingTour(false);
+    localStorage.setItem('tuk_tour_completed', 'true');
+    toast.success('Tour completed! 🎉', { duration: 3000 });
+  };
+
+  const handleStartTour = () => {
+    setShowOnboardingTour(true);
+  };
+
   const isGuest = userRole === 'GUEST';
 
   // ✅ FIX: Render a loading screen while waiting for the backend
@@ -231,6 +263,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      {showFireworks && <Confetti width={width} height={height} recycle={false} numberOfPieces={500} />}
       <Toaster position="top-right" />
       <Navbar 
         user={user} 
@@ -240,6 +273,7 @@ function App() {
         handleLogout={handleLogout} 
         masterProfile={masterProfile}
         onGenerateMaster={handleGenerateMasterProfile}
+        onStartTour={() => setShowOnboardingTour(true)} // <-- MAKE SURE THIS PROP IS HERE
       />
 
       <main className="container mx-auto p-4 md:p-8 max-w-6xl">
@@ -274,6 +308,17 @@ function App() {
         {view === 'module_services' && <ServicesModuleView masterProfile={masterProfile} onPrepare={handlePreparePortfolio} />}
         {view === 'module_portfolio' && <PortfolioView portfolioData={portfolioData} onBack={() => setView('module_services')} onDownload={() => downloadPDF('portfolio-export')} />}
       </main>
+
+      {/* ONBOARDING TOUR */}
+      <OnboardingTour
+        run={showOnboardingTour}
+        onComplete={handleTourComplete}
+        user={user}
+        userRole={userRole}
+        view={view}
+        masterProfile={masterProfile}
+      />
+
       <Analytics />
     </div>
   );

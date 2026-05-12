@@ -1,6 +1,7 @@
 import React from 'react';
 import SkillList from '../shared/SkillList'; // ⬅️ UPDATED PATH
-import { Download, BrainCircuit, TrendingUp, Target, Activity, Info } from 'lucide-react';
+import ShareModal from '../shared/ShareModal'; // ⬅️ NEW IMPORT
+import { Download, BrainCircuit, TrendingUp, Target, Activity, Info, Share2 } from 'lucide-react';
 import { 
   Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell
@@ -8,13 +9,16 @@ import {
 
 // Add this helper component at the top of DashboardView.jsx (outside the main export function)
 const AffiliateCard = ({ roleTitle }) => {
+  // Your provided Jumia Affiliate Link
+  const affiliateLink = "https://aal4.adj.st/ke?adjust_deeplink=jumia%3a%2f%2fke&adj_label=casid*d3f90e60-0fc7-4de1-acb2-b9449a1a05a0^type*jforce&adjust_t=1w7aejdk_1wskofxs&adjust_campaign=JF_Affiliate_KE&adjust_redirect=https%3A%2F%2Fwww.jumia.co.ke%2F%3futm_source%3dJFORCE%26utm_medium%3dJF_Affiliate%26utm_campaign%3dJF_Affiliate_KE%26adj_label=casid*d3f90e60-0fc7-4de1-acb2-b9449a1a05a0^type*jforce";
+
   // Simple logic to match gear to the AI's recommended role
-  let gear = { category: "Productivity", item: "High-Performance Laptops", link: "YOUR_JUMIA_GENERAL_LINK_HERE" };
+  let gear = { category: "Productivity", item: "High-Performance Laptops", link: affiliateLink };
   
   if (roleTitle && roleTitle.toLowerCase().includes('software') || roleTitle.toLowerCase().includes('developer')) {
-    gear = { category: "Coding", item: "External Monitors & Mechanical Keyboards", link: "YOUR_JUMIA_MONITOR_LINK_HERE" };
+    gear = { category: "Coding", item: "External Monitors & Mechanical Keyboards", link: affiliateLink };
   } else if (roleTitle && roleTitle.toLowerCase().includes('design') || roleTitle.toLowerCase().includes('creative')) {
-    gear = { category: "Creative", item: "Graphics Tablets & Color-Accurate Displays", link: "YOUR_JUMIA_TABLET_LINK_HERE" };
+    gear = { category: "Creative", item: "Graphics Tablets & Color-Accurate Displays", link: affiliateLink };
   }
 
   return (
@@ -41,6 +45,7 @@ const AffiliateCard = ({ roleTitle }) => {
 };
 
 export default function DashboardView({ user, profile, masterProfile, onDownload, onGenerateMaster, isSynthesizing, isGuest }) {
+  const [showShareModal, React.useState(false);
   const activeProfile = masterProfile || profile;
 
   const radarData = (activeProfile?.skills?.technical || []).slice(0, 6).map((skill) => ({
@@ -71,7 +76,7 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
       )}
 
       {/* 1. PERSISTENT MASTER PROFILE ACTION BAR */}
-      <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 profile-action-bar">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center border-2 border-emerald-500 overflow-hidden">
             <img src={user?.photoURL} alt="Profile" crossOrigin="anonymous" className="w-full h-full object-cover" />
@@ -91,6 +96,16 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
             <BrainCircuit className="w-5 h-5" /> 
             {isSynthesizing ? 'Synthesizing...' : (masterProfile ? 'Update Master Profile' : 'Generate Master Profile')}
           </button>
+          
+          {masterProfile && (
+            <button 
+              onClick={() => setShowShareModal(true)}
+              className="p-3 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl transition-colors"
+              title="Share your profile"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
+          )}
           
           <button onClick={onDownload} className="p-3 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl transition-colors">
             <Download className="w-5 h-5" />
@@ -156,6 +171,16 @@ export default function DashboardView({ user, profile, masterProfile, onDownload
       {!isGuest && (
         <AffiliateCard roleTitle={activeProfile?.recommended_role?.title} />
       )}
+
+      {/* SHARE MODAL */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        title="TU-K Talent Profile"
+        description={`Check out my AI-generated career profile as a ${activeProfile?.recommended_role?.title || 'Professional'}`}
+        url={`${window.location.origin}/profile/${user?.uid}`}
+        user={user}
+      />
 
     </div>
   );

@@ -14,7 +14,7 @@ export default function OnboardingView({ user, onFileChange, isUploading, onSkip
         </div>
       )}
 
-      <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 text-center">
+      <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 text-center upload-section">
         <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
           <UploadCloud className="w-10 h-10 text-emerald-600" />
         </div>

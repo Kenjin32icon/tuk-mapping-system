@@ -1,7 +1,10 @@
 import React from 'react';
-import { Briefcase, Download, ArrowLeft, Code, CheckCircle } from 'lucide-react';
+import ShareModal from '../shared/ShareModal'; // ⬅️ NEW IMPORT
+import { Briefcase, Download, ArrowLeft, Code, CheckCircle, Share2 } from 'lucide-react';
 
 export default function PortfolioView({ portfolioData, onBack, onDownload }) {
+  const [showShareModal, setShowShareModal] = React.useState(false);
+
   if (!portfolioData) return null;
 
   return (
@@ -17,9 +20,18 @@ export default function PortfolioView({ portfolioData, onBack, onDownload }) {
           </h2>
           <p className="text-slate-400 max-w-2xl">{portfolioData.targeted_bio}</p>
         </div>
-        <button onClick={onDownload} className="p-3 bg-slate-800 hover:bg-blue-600 rounded-xl transition-colors">
-          <Download className="w-6 h-6" />
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setShowShareModal(true)}
+            className="p-3 bg-slate-800 hover:bg-blue-600 rounded-xl transition-colors"
+            title="Share portfolio"
+          >
+            <Share2 className="w-6 h-6" />
+          </button>
+          <button onClick={onDownload} className="p-3 bg-slate-800 hover:bg-blue-600 rounded-xl transition-colors">
+            <Download className="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
       <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl">
@@ -57,6 +69,17 @@ export default function PortfolioView({ portfolioData, onBack, onDownload }) {
           </div>
         ))}
       </div>
+
+      {/* SHARE MODAL */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        title="Portfolio"
+        description={`Check out my professional portfolio: ${portfolioData.portfolio_title}`}
+        url={`${window.location.origin}/portfolio/${portfolioData.id || 'shared'}`}
+        user={null}
+      />
+
     </div>
   );
 }

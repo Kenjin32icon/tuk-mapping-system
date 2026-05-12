@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Mail, Shield, Save, Settings, Loader2 } from 'lucide-react';
+import { Mail, Shield, Save, Settings, Loader2, Phone, MessageCircle, Hash, Camera, Music } from 'lucide-react';
 import { auth } from '../../firebase'; 
 import { toast } from 'react-hot-toast';
 
@@ -9,6 +9,9 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 export default function ProfileSettings({ user, isAdmin }) {
   const [phone, setPhone] = useState('');
   const [portfolio, setPortfolio] = useState('');
+  const [twitter, setTwitter] = useState('');
+  const [instagram, setInstagram] = useState('');
+  const [tiktok, setTiktok] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -22,6 +25,9 @@ export default function ProfileSettings({ user, isAdmin }) {
         });
         setPhone(response.data.phone || '');
         setPortfolio(response.data.portfolio || '');
+        setTwitter(response.data.twitter || '');
+        setInstagram(response.data.instagram || '');
+        setTiktok(response.data.tiktok || '');
       } catch (error) {
         console.error("Failed to load settings");
         toast.error("Failed to load your profile settings.");
@@ -38,7 +44,7 @@ export default function ProfileSettings({ user, isAdmin }) {
     try {
       const token = await auth.currentUser.getIdToken();
       // FIXED: Unified API_BASE_URL usage
-      await axios.post(`${API_BASE_URL}/api/update-settings`, { phone, portfolio }, {
+      await axios.post(`${API_BASE_URL}/api/update-settings`, { phone, portfolio, twitter, instagram, tiktok }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       toast.success("Settings saved successfully!");
@@ -89,6 +95,24 @@ export default function ProfileSettings({ user, isAdmin }) {
                 placeholder="+254 700 000000" 
                 className="w-full border border-slate-200 p-3 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
               />
+              {phone && (
+                <div className="mt-2 flex gap-2">
+                  <a 
+                    href={`tel:${phone}`} 
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-md hover:bg-green-200 transition-colors"
+                  >
+                    <Phone className="w-3 h-3" /> Call
+                  </a>
+                  <a 
+                    href={`https://wa.me/${phone.replace(/\D/g, '')}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-green-500 text-white text-xs font-bold rounded-md hover:bg-green-600 transition-colors"
+                  >
+                    <MessageCircle className="w-3 h-3" /> WhatsApp
+                  </a>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Portfolio / LinkedIn URL</label>
@@ -97,6 +121,45 @@ export default function ProfileSettings({ user, isAdmin }) {
                 value={portfolio}
                 onChange={(e) => setPortfolio(e.target.value)}
                 placeholder="https://linkedin.com/in/..." 
+                className="w-full border border-slate-200 p-3 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                <Hash className="w-4 h-4 text-blue-500" /> X / Twitter
+              </label>
+              <input 
+                type="text" 
+                value={twitter}
+                onChange={(e) => setTwitter(e.target.value)}
+                placeholder="@username or https://x.com/username" 
+                className="w-full border border-slate-200 p-3 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                <Camera className="w-4 h-4 text-pink-500" /> Instagram
+              </label>
+              <input 
+                type="text" 
+                value={instagram}
+                onChange={(e) => setInstagram(e.target.value)}
+                placeholder="@username or https://instagram.com/username" 
+                className="w-full border border-slate-200 p-3 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                <Music className="w-4 h-4 text-black" /> TikTok
+              </label>
+              <input 
+                type="text" 
+                value={tiktok}
+                onChange={(e) => setTiktok(e.target.value)}
+                placeholder="@username or https://tiktok.com/@username" 
                 className="w-full border border-slate-200 p-3 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
               />
             </div>

@@ -1,8 +1,8 @@
 // components/Navbar.jsx
 import React, { useState } from 'react';
-import { Menu, X, UploadCloud, LayoutDashboard, Settings, LogOut, Shield, BrainCircuit } from 'lucide-react';
+import { Menu, X, UploadCloud, LayoutDashboard, Settings, LogOut, Shield, BrainCircuit, HelpCircle } from 'lucide-react';
 
-export default function Navbar({ user, userRole, view, setView, handleLogout, masterProfile, onGenerateMaster }) {
+export default function Navbar({ user, userRole, view, setView, handleLogout, masterProfile, onGenerateMaster, onStartTour }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   if (!user) return null;
@@ -48,7 +48,7 @@ export default function Navbar({ user, userRole, view, setView, handleLogout, ma
 
           {/* DROPDOWN MENU */}
           {menuOpen && (
-            <div className="absolute top-14 right-0 w-56 bg-white border border-slate-100 shadow-xl rounded-xl py-2 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="absolute top-14 right-0 w-56 bg-white border border-slate-100 shadow-xl rounded-xl py-2 animate-in fade-in slide-in-from-top-2 duration-200 navbar-menu">
               
               {/* ADVANCED ADMIN LINKS */}
               {userRole === 'SUPER_ADMIN' && (
@@ -77,7 +77,7 @@ export default function Navbar({ user, userRole, view, setView, handleLogout, ma
                   
                   {/* DYNAMIC MASTER PROFILE / MODULE LINKS */}
                   {masterProfile ? (
-                    <div className="bg-slate-50 py-1">
+                    <div className="bg-slate-50 py-1 module-navigation">
                        <p className="px-4 py-1 text-xs font-bold text-slate-400 uppercase">Master Modules</p>
                        <button onClick={() => navigate('module_skills')} className="w-full text-left px-4 py-2 hover:bg-emerald-100 flex items-center gap-3 text-sm font-medium text-slate-700">
                          Skills Analysis
@@ -102,6 +102,9 @@ export default function Navbar({ user, userRole, view, setView, handleLogout, ma
 
               {/* SHARED LINKS (Settings & Logout) */}
               <hr className="my-1 border-slate-100" />
+              <button onClick={() => { onStartTour(); setMenuOpen(false); }} className="w-full text-left px-4 py-3 hover:bg-blue-50 flex items-center gap-3 text-sm font-medium text-blue-700">
+                <HelpCircle className="w-4 h-4"/> Take Tour
+              </button>
               <button onClick={() => navigate('settings')} className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 text-sm font-medium text-slate-700">
                 <Settings className="w-4 h-4 text-slate-400"/> Profile Settings
               </button>
