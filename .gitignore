@@ -12,3 +12,7 @@ backend/serviceAccount.b64
 backend/serviceAccount.json
 backend/tuk-mapping-system-GOOGLE_SHEETS_KEY.json
 frontend/src/.env
+compile_system.py
+Screenshot at 2026-05-16 13-32-17.png
+Screenshot at 2026-05-21 10-13-11.png
+tuk-mapping-system_compiled_system.txt

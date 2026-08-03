@@ -34,6 +34,48 @@ This system uses intelligent mapping to analyze a student's coursework and proje
 
 ---
 
+## 🌐 Live Demo
+> **[View the TUK Mapping System Live](https://tuk-mapping-system-frontend.vercel.app/)**
+
+> [!WARNING]
+> This application relies on cloud databases and external AI APIs. It **only works with an active internet connection**.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/your-username/tuk-mapping-system.git
+cd tuk-mapping-system
+```
+
+### 2. Set Up the Backend
+Navigate to the backend directory and install dependencies:
+```bash
+cd backend
+npm install
+```
+Configure your environment variables as described in the [Backend README](./backend/README.md), then start the server:
+```bash
+npm run dev
+```
+
+### 3. Set Up the Frontend
+Open a new terminal, navigate to the frontend directory, and install dependencies:
+```bash
+cd frontend
+npm install
+```
+Start the frontend development server:
+```bash
+npm run dev
+```
+
+For more specific details on the frontend, refer to the [Frontend README](./frontend/README.md).
+
+---
+
 ## 📂 Project Structure
 ```text
 ├── data/               # TUK Curriculum datasets & skill taxonomies
