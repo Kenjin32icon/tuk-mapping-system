@@ -46,7 +46,7 @@ This system uses intelligent mapping to analyze a student's coursework and proje
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/tuk-mapping-system.git
+git clone https://github.com/Kenjin32icon/tuk-mapping-system.git
 cd tuk-mapping-system
 ```
 
