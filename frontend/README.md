@@ -1,7 +1,5 @@
 # TUK Skills Map Frontend
 
-> 🔙 **[Back to Main Project README](../README.md)**
-
 This is the frontend application for the TUK Skills Map system, built using React, Vite, and Tailwind CSS.
 
 ## Overview
