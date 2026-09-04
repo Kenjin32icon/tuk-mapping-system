@@ -27,3 +27,4 @@ frontend/.env.local
 .env
 .env.local
 alpha-test-logs/
+01-clean-secrets-branch.sh
