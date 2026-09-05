@@ -12,7 +12,7 @@
 
         Authentication & Security: Firebase Auth (Google OAuth), Role-Based Access Control (RBAC) via custom MongoDB middleware.
 
-        AI Processing Core: Groq SDK (Llama-3.3-70b-versatile model).
+        AI Processing Core: Groq SDK (openai/gpt-oss-120b model).
 
     2. System Architecture & File Structure
     The system utilizes a modular, decoupled architecture. The frontend isolates user roles to prevent unauthorized access:

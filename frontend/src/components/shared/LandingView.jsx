@@ -1,4 +1,4 @@
-// components/LandingView.jsx
+// frontend/src/components/shared/LandingView.jsx
 import React, { useState } from 'react';
 import { BrainCircuit, UploadCloud, Layers, CheckCircle, AlertCircle, ChevronRight } from 'lucide-react';
 
@@ -30,7 +30,7 @@ export default function LandingView({ onLogin, onGuestLogin }) {
             <div>
               <h3 className="font-bold text-amber-900 text-base">Document Upload is Required</h3>
               <p className="text-amber-800 text-sm mt-1 leading-relaxed">
-                To fully use this system, you <strong>must upload at least 2 documents</strong> — your CV, academic transcripts, project reports, or professional certificates. Without them, the AI cannot generate your career analysis.
+                To fully use this system, you <strong>must upload at least 1 document</strong> — your CV, academic transcripts, project reports, or professional certificates. Uploading 2–5 gives the AI more to work with, but 1 is enough to get started. Without them, the AI cannot generate your career analysis.
               </p>
             </div>
           </div>
@@ -38,7 +38,7 @@ export default function LandingView({ onLogin, onGuestLogin }) {
           {/* Steps to full access */}
           <div className="space-y-2">
             {[
-              { icon: UploadCloud, text: 'Upload 2–5 documents (CV, transcripts, certificates)', req: true },
+              { icon: UploadCloud, text: 'Upload 1–5 documents (CV, transcripts, certificates)', req: true },
               { icon: BrainCircuit, text: 'Generate your AI Master Profile for skills & market analysis', req: true },
               { icon: Layers, text: 'Access Services, Portfolio Builder, and Market Modules', req: false },
             ].map(({ icon: Icon, text, req }, i) => (

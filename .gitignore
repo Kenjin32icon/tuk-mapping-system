@@ -23,3 +23,14 @@ frontend/node_modules/
 backend/backend_compiled_system.txt
 01-clean-secrets-branch.sh
 02-alpha-test.sh
+01-clean-secrets-branch.shbackend/*GOOGLE_SHEETS_KEY*.json
+frontend/.env
+frontend/.env.local
+.env
+.env.local
+alpha-test-logs/
+01-clean-secrets-branch.sh
+frontend/src/.env
+frontend/src/.env
+.~lock.*#
+02-alpha-test.sh
