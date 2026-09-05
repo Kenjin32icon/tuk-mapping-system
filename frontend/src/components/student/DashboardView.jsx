@@ -1,3 +1,4 @@
+// src/components/student/DashboardView.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import SkillList from '../shared/SkillList';
@@ -17,7 +18,6 @@ import {
 const AffiliateCard = ({ roleTitle }) => {
   const affiliateLink = "https://aal4.adj.st/ke?adjust_deeplink=jumia%3a%2f%2fke&adj_label=casid*d3f90e60-0fc7-4de1-acb2-b9449a1a05a0^type*jforce&adjust_t=1w7aejdk_1wskofxs&adjust_campaign=JF_Affiliate_KE&adjust_redirect=https%3A%2F%2Fwww.jumia.co.ke%2F%3futm_source%3dJFORCE%26utm_medium%3dJF_Affiliate%26utm_campaign%3dJF_Affiliate_KE%26adj_label=casid*d3f90e60-0fc7-4de1-acb2-b9449a1a05a0^type*jforce";
 
-  // ✅ FIX: Safely lowercase only when roleTitle is a non-empty string
   const roleLower = typeof roleTitle === 'string' ? roleTitle.toLowerCase() : '';
 
   let gear = { category: "Productivity", item: "High-Performance Laptops", link: affiliateLink };
@@ -100,12 +100,12 @@ const EmptyStateBanner = ({ onUploadClick, onGenerateMaster, isSynthesizing, doc
           <div>
             <h4 className="font-bold text-white mb-1">Generate Master Profile</h4>
             <p className="text-slate-400 text-xs leading-relaxed">
-              After uploading at least 2 documents, generate your AI Master Profile to unlock skills analysis, market readiness scores, and sector demand data.
+              After uploading at least 1 document, generate your AI Master Profile to unlock skills analysis, market readiness scores, and sector demand data. (2–5 documents give richer results.)
             </p>
           </div>
           <button
             onClick={onGenerateMaster}
-            disabled={isSynthesizing || documentCount < 2}
+            disabled={isSynthesizing || documentCount < 1}
             className="mt-auto w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
           >
             <BrainCircuit className="w-4 h-4" />
@@ -133,11 +133,11 @@ const EmptyStateBanner = ({ onUploadClick, onGenerateMaster, isSynthesizing, doc
         </div>
       </div>
 
-      {documentCount > 0 && documentCount < 2 && (
+      {documentCount === 1 && (
         <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
           <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
           <p className="text-amber-300 text-sm">
-            You've uploaded <strong>{documentCount} document</strong>. Upload at least 2 to enable Master Profile generation, or 5 for the strongest insights.
+            You've uploaded <strong>1 document</strong> — enough to generate your profile now. Add up to 4 more for stronger insights.
           </p>
         </div>
       )}
@@ -235,7 +235,7 @@ export default function DashboardView({
       )}
 
       {/* ── UPLOAD REMINDER for real users with some docs but none synthesised ── */}
-      {!isGuest && !masterProfile && documentCount >= 2 && (
+      {!isGuest && !masterProfile && documentCount >= 1 && (
         <div className="bg-amber-50 border border-amber-200 text-amber-900 p-5 rounded-3xl shadow-sm">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">

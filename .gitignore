@@ -28,3 +28,7 @@ frontend/.env.local
 .env.local
 alpha-test-logs/
 01-clean-secrets-branch.sh
+frontend/src/.env
+frontend/src/.env
+.~lock.*#
+02-alpha-test.sh

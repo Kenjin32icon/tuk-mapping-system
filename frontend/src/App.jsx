@@ -180,6 +180,7 @@ function App() {
     }
   };
 
+  // Step 3 — Surface live API and server errors dynamically
   const handleGenerateMasterProfile = async () => {
     if (requireLiveAccount()) return;
     setIsSynthesizing(true);
@@ -190,14 +191,17 @@ function App() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMasterProfile(response.data);
-
       setShowFireworks(true);
       setTimeout(() => setShowFireworks(false), 6000);
-
       toast.success('Master Profile generated successfully!');
       setView('dashboard');
     } catch (error) {
-      toast.error("Could not generate Master Profile. Make sure you have uploaded at least 2 documents.");
+      const backendMessage = error.response?.data?.message;
+      const status = error.response?.status;
+      let fallback = "Something went wrong generating your Master Profile. Please try again.";
+      if (status === 401 || status === 403) fallback = "Your session expired. Please sign in again.";
+      else if (!error.response) fallback = "Couldn't reach the server. Check your connection and try again.";
+      toast.error(backendMessage || fallback);
       setView('dashboard');
     } finally {
       setIsSynthesizing(false);

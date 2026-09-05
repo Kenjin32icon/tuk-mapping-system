@@ -190,25 +190,21 @@ app.post('/api/update-settings', verifyAuth, async (req, res) => {
     } catch (error) { res.status(500).send('Error updating settings'); }
 });
 
-app.get('/api/admin/students', async (req, res) => {
-    // ... admin auth checks ...
+// Step 1 — Locked down admin student data route
+app.get('/api/admin/students', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_ADMIN', 'GOVT_ADMIN']), async (req, res) => {
     try {
-        // MUST include masterProfile in the fetch!
         const students = await User.find({}).select('name email role phone masterProfile readiness bestSector');
-        
-        // Transform the data for the frontend
         const formattedStudents = students.map(s => ({
             _id: s._id,
             name: s.name,
             email: s.email,
             phone: s.phone,
-            bio: s.bio, // Passed to frontend
-            masterProfile: s.masterProfile, // Passed to frontend for the Modal
+            bio: s.bio,
+            masterProfile: s.masterProfile,
             role: s.masterProfile?.recommended_role?.title || "Pending",
             bestSector: s.masterProfile?.kenyan_market_alignment?.best_fit_sector || "Pending",
             readiness: s.masterProfile?.kenyan_market_alignment?.market_readiness_score || 0
         }));
-
         res.json(formattedStudents);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -237,7 +233,7 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
 
         const completion = await groq.chat.completions.create({
             messages: [{ role: "system", content: "Reply strictly in JSON." }, { role: "user", content: aiPrompt }],
-            model: "llama-3.3-70b-versatile",
+            model: "openai/gpt-oss-120b",
             response_format: { type: "json_object" }
         });
 
@@ -258,38 +254,62 @@ app.post('/api/analyze-data', verifyAuth, aiLimiter, upload.array('documents', 5
     }
 });
 
+// Step 2 — Single-document synthesis + structured errors route
 app.post('/api/synthesize-profile', verifyAuth, aiLimiter, async (req, res) => {
     try {
         const history = await Profile.find({ userId: req.user.uid }).sort({ createdAt: -1 });
-        if (history.length < 2) return res.status(400).send("Need 2+ documents.");
-        
+        if (history.length < 1) {
+            return res.status(400).json({
+                error: 'INSUFFICIENT_DOCS',
+                message: 'Upload at least 1 document to generate your profile.'
+            });
+        }
         const pastProfiles = history.map(doc => doc.generatedProfile);
-        const synthesisPrompt = `You are an elite Career Strategist in Nairobi. Synthesize these analyses into ONE master profile.
+        const singleDocNote = history.length === 1
+            ? ' Only one source document is available — build the most complete profile you reasonably can from it, and keep any uncertain fields conservative rather than inventing detail.'
+            : '';
+        const synthesisPrompt = `You are an elite Career Strategist in Nairobi. Synthesize these analyses into ONE master profile.${singleDocNote}
         Strictly output JSON: { "bio": "...", "skills": { "technical": [], "soft": [], "transferable": [] }, "kenyan_market_alignment": { "best_skill_area_expertise": "...", "description": "...", "service_potentiality_score": 85, "market_readiness_score": 78, "skill_scarcity_index": "High" }, "sector_demand": [ { "sector": "FinTech", "demand_percentage": 90 } ], "recommended_role": { "title": "...", "description": "..." }, "marketable_services": [ { "service_name": "...", "demand_score": 90, "description": "..." } ] }
         Data: ${JSON.stringify(pastProfiles)}`;
 
-        const completion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: synthesisPrompt }],
-            model: "llama-3.3-70b-versatile",
-            temperature: 0.4,
-            response_format: { type: "json_object" }
-        });
-        
-        const consolidatedProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
-        
+        let completion;
+        try {
+            completion = await groq.chat.completions.create({
+                messages: [{ role: "user", content: synthesisPrompt }],
+                model: "openai/gpt-oss-120b",
+                temperature: 0.4,
+                response_format: { type: "json_object" }
+            });
+        } catch (aiErr) {
+            console.error("Groq synthesis error:", aiErr);
+            return res.status(502).json({ error: 'AI_SERVICE_ERROR', message: 'Our AI service could not be reached. Please try again shortly.' });
+        }
+
+        let consolidatedProfile;
+        try {
+            consolidatedProfile = JSON.parse(jsonrepair(completion.choices[0].message.content));
+        } catch (parseErr) {
+            console.error("Synthesis parse error:", parseErr);
+            return res.status(502).json({ error: 'AI_PARSE_ERROR', message: 'The AI returned an unexpected format. Please try again.' });
+        }
+
         const updatedUser = await User.findOneAndUpdate(
-            { firebaseUid: req.user.uid }, 
+            { firebaseUid: req.user.uid },
             { masterProfile: consolidatedProfile },
-            { new: true } 
+            { new: true }
         );
 
-        await createLog(req.user.email, 'PROFILE_SYNTHESIZED', `Generated master profile.`);
+        if (!updatedUser) {
+            return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'Your account record was not found. Try signing out and back in.' });
+        }
+
+        await createLog(req.user.email, 'PROFILE_SYNTHESIZED', `Generated master profile from ${history.length} document(s).`);
         syncToGoogleSheets(updatedUser).catch(err => console.error("Google Sheets Sync failed:", err));
 
         res.json(consolidatedProfile);
-    } catch (e) { 
-        console.error(e);
-        res.status(500).send('Synthesis failed.'); 
+    } catch (e) {
+        console.error("Synthesis failed:", e);
+        res.status(500).json({ error: 'SYNTHESIS_FAILED', message: 'Something went wrong generating your profile. Please try again in a moment.' });
     }
 });
 
@@ -313,7 +333,7 @@ app.post('/api/match-job', verifyAuth, requireRole(['SUPER_ADMIN', 'UNIVERSITY_A
     try {
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: matchPrompt }],
-            model: "llama-3.3-70b-versatile",
+            model: "openai/gpt-oss-120b",
             response_format: { type: "json_object" }
         });
         res.json(JSON.parse(completion.choices[0].message.content));
